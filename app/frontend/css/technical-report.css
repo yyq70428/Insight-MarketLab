@@ -1,0 +1,23 @@
+/* Keep the narrow rail; stack agents so complete reports remain readable. */
+@container agents (max-width: 640px) {
+  .first-layer { grid-template-columns: minmax(0, 1fr); }
+  .agent-card + article { border-left: 0; border-top: 1px solid var(--line); }
+}
+.technical-result { font-size: 13px; line-height: 1.65; min-width: 0; }
+.technical-odds { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 3px; }
+.technical-odds > div { border: 1px solid #2d3340; background: #1b202c; border-radius: 5px; padding: 9px 10px; }
+.technical-odds span { display: block; }
+.technical-odds strong { display: block; font-size: 24px; font-weight: 700; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.technical-result .bullish { color: #21b6ad; }
+.technical-result .bearish { color: #ff525b; }
+.technical-result h4 { margin: 12px 0; color: var(--text); font-size: 14px; }
+.technical-prices { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; margin: 0 0 14px; }
+.technical-prices dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.technical-target { padding: 9px 10px; border: 1px solid #294797; border-radius: 5px; background: #151d33; color: #89aaff; font-weight: 600; }
+.technical-components { list-style: none; padding: 0; margin: 10px 0; }
+.technical-components li { border-left: 3px solid #3a404c; padding-left: 9px; margin: 5px 0; }
+.technical-macd { border-left: 3px solid #7961b8; padding: 9px; line-height: 1.75; }
+.technical-macd small { display: block; font-size: 11px; margin-top: 5px; color: #8590a5; }
+.technical-result .technical-caveat { margin: 12px 0 0; }
+.technical-assumptions { font-size: 11px; }
+.technical-assumptions summary { cursor: pointer; color: #97a2b7; }

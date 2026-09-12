@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MarketLab｜個股資訊</title><link rel="stylesheet" href="/static/css/main.css"><link rel="stylesheet" href="/static/css/stock.css"><link rel="stylesheet" href="/static/css/chart-host.css"></head>
+<body><header class="page-top"><a class="brand" href="/"><span class="brand-bars"><i></i><i></i><i></i></span>MarketLab</a>
+<form id="stockSearch"><input id="stockSymbol" value="0050.TW" aria-label="標的代號"><button class="primary">載入個股</button></form>
+<nav><a href="/">圖表</a><a href="/scanner">掃描器</a><a href="/quant">量化</a></nav></header>
+<main class="stock-main"><section class="stock-hero"><div><span id="exchange">—</span><h1 id="stockName">載入中…</h1><p id="stockMeta">—</p></div><div class="stock-price"><strong id="stockPrice">—</strong><span id="stockChange">—</span></div></section>
+<section class="stock-grid"><article class="stock-chart"><div id="stockChart" class="chart-host"></div></article><article class="company-card"><h2>公司資料</h2><dl id="profileData"></dl><p id="profileSummary"></p></article>
+<article class="news-column"><h2>台灣新聞</h2><div id="twNews"></div></article><article class="news-column"><h2>國際新聞</h2><div id="globalNews"></div></article></section></main>
+<script src="/static/js/vendor/lightweight-charts.standalone.js"></script><script type="module" src="/static/js/stock.js"></script></body></html>

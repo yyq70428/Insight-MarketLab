@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MarketLab｜金融分析工作台</title>
+  <link rel="stylesheet" href="/static/css/main.css"><link rel="stylesheet" href="/static/css/layout-fixes.css?v=2"><link rel="stylesheet" href="/static/css/mobile.css"><link rel="stylesheet" href="/static/css/chart-host.css"><link rel="stylesheet" href="/static/css/visual-match.css?v=4">
+  <link rel="stylesheet" href="/static/css/technical-report.css?v=1">
+</head>
+<body class="workbench">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="MarketLab 首頁"><span class="brand-bars"><i></i><i></i><i></i></span>MarketLab</a>
+    <button class="symbol-button" id="openSearch" aria-haspopup="dialog"><span class="search-glyph">⌕</span><strong id="activeSymbol">0050.TW</strong></button>
+    <nav class="intervals" aria-label="K 線週期">
+      <button data-interval="1m">1分</button><button data-interval="5m">5分</button><button data-interval="15m">15分</button><button data-interval="30m">30分</button><button data-interval="1h">1時</button><button class="active" data-interval="1d">日</button><button data-interval="1wk">週</button><button data-interval="1mo">月</button>
+    </nav>
+    <label class="anchor-field"><span>錨定</span><input type="date" id="anchorDate"><button id="clearAnchor" title="清除錨點">即時</button></label>
+    <div class="toggles"><button class="active" data-toggle="harmonics">諧波型態</button><button class="active" data-toggle="zones">支撐壓力</button><button data-toggle="zigzag">ZigZag</button><button class="active" data-toggle="rsi">RSI</button><button class="active" data-toggle="macd">MACD</button></div>
+    <div class="quote-summary"><strong id="lastPrice">—</strong><span id="priceChange">—</span></div>
+    <nav class="product-links"><a href="/dashboard">Agent 後台</a><a href="/scanner">掃描器</a><a href="/stock">個股資訊</a><a href="/quant">量化回測</a><button id="toggleSidebar">側欄</button></nav><button id="mobileSidebar" aria-label="開啟 Agent 側欄">Agent</button>
+  </header>
+  <main class="workspace">
+    <section class="chart-column">
+      <aside class="draw-tools" aria-label="圖表工具"><button class="active" title="十字游標">＋</button><button title="趨勢線">⌁</button><button title="水平線">―</button><button id="clearDrawings" title="清除畫線">◇</button></aside>
+      <section class="chart-panel main-chart-panel">
+        <div class="chart-legend"><h1><span id="chartSymbol">0050.TW</span> <small id="companyName">— · 1d</small></h1><div id="ohlcLine">開 —　高 —　低 —　收 —　量 —</div></div>
+        <div id="priceChart" class="chart-host" aria-label="K 線與成交量圖"></div><div id="chartLoading" class="loading-state">正在載入行情…</div>
+        <span id="zoneHistoryNote" class="zone-history-note" hidden>淡框：歷史區間（回看整理）· 類型依視窗末價</span>
+      </section>
+      <section class="indicator-panel" id="rsiPanel"><header>RSI (14) <span id="rsiValue">—</span><button data-close="rsi">×</button></header><canvas id="rsiChart"></canvas></section>
+      <section class="indicator-panel" id="macdPanel"><header>MACD (12,26,9) <span id="macdValue">—</span><button data-close="macd">×</button></header><canvas id="macdChart"></canvas></section>
+      <footer class="chart-footer"><span class="connection-dot"></span><span id="dataStatus">連線中　資料來源：Yahoo Finance（報價可能延遲）</span><span>拖曳平移 · 滾輪縮放 · [/] 搜尋商品</span></footer>
+    </section>
+    <aside class="agent-sidebar" id="agentSidebar">
+      <section class="side-section batch-section">
+        <header><h2>區間序列回測</h2><span class="status waiting" id="batchStatus">待命</span></header>
+        <div class="batch-grid"><label>開始日<input type="date" id="batchStart"></label><label>結束日<input type="date" id="batchEnd"></label><label>最長持有<select id="maxHold"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option></select></label><label>觀望成功波動<div class="suffix-input"><input type="number" id="holdThreshold" value="2" min="0.1" max="20" step="0.1"><span>%</span></div></label></div>
+        <button class="primary full" id="runBatch">執行區間回測</button><p class="muted">每個交易日依序完成判斷、驗證與自適應，才進入下一輪。</p><div class="batch-progress hidden" id="batchProgress" aria-live="polite"><progress value="0" max="100"></progress><div id="batchSummary"></div><div id="batchRounds"></div><button type="button" class="secondary full hidden" id="refreshBatch">更新後續行情與驗證</button></div>
+      </section>
+      <section class="side-section flow-section">
+        <header><div><h2>第一層 · 平行分析</h2><p id="flowHint">請選擇歷史錨點以建立 Session</p></div><div class="button-row"><button class="secondary" id="runFirst">只跑第一層</button><button class="primary" id="runFlow">一鍵執行完整 Flow</button></div></header>
+        <div class="first-layer">
+          <article class="agent-card"><header><h3>技術面 Agent</h3><span class="status waiting" id="techStatus">待命</span></header><p class="anchor-warning" id="techAnchor">錨定日期後，僅使用此前資料</p><div class="weights"><label>諧波 <output>25.0%</output><input type="range" min="0" max="100" value="25"></label><label>支撐壓力 <output>25.0%</output><input type="range" min="0" max="100" value="25"></label><label>MACD <output>25.0%</output><input type="range" min="0" max="100" value="25"></label><label>RSI <output>25.0%</output><input type="range" min="0" max="100" value="25"></label></div><div class="button-row"><button class="secondary" id="saveTech">儲存參數</button><button class="primary" id="runTech">執行判斷</button></div><div class="report" id="techReport" aria-live="polite">標的或週期已變更，請重新分析</div></article>
+          <article class="agent-card"><header><h3>新聞面 Agent</h3><span class="status waiting" id="newsStatus">待命</span></header><p class="anchor-warning">先選擇錨定日期</p><div class="news-fields"><label>回看天數<input type="number" value="30" min="7" max="90"></label><label>搜尋輪數<select><option>3 輪</option><option>4 輪</option><option>5 輪</option></select></label><label class="wide">標的名稱（自動帶入，可補充）<input id="newsName" placeholder="標的名稱"></label></div><button class="adaptive-outline full" id="runNews">擷取新聞並判斷</button><div class="report" id="newsReport" aria-live="polite">標的或週期已變更，請重新擷取新聞</div></article>
+        </div>
+        <div class="pipeline-divider">技術 + 新聞 <span>↓</span> LLM 決策 <span>↓</span> 紙上驗證</div>
+        <article class="execution-card"><header><h3>執行 Agent</h3><span class="status waiting" id="executionStatus">等待第一層</span></header><label>技術 / 新聞權重 <output>技術 50% / 新聞 50%</output><input type="range" min="0" max="100" value="50" id="executionWeight"></label><label>最低 LLM 執行信心 <output>52%</output><input type="range" min="0" max="100" value="52" id="confidence"></label><button class="disabled-action full" id="runExecution" disabled>等待兩份報告完成</button><div class="report" id="executionReport">圖表顯示錨定資料；決策完成後才讀取未來 K 線。</div></article>
+        <div class="button-row replay-actions"><button type="button" class="secondary hidden" id="refreshValidation">更新驗證</button><button type="button" class="secondary hidden" id="playValidation">播放驗證 K 線</button><button type="button" class="secondary hidden" id="restoreAnchor">回到錨點</button></div>
+        <article class="execution-card"><header><h3>自適應 Agent</h3><span class="status waiting" id="adaptiveStatus">待命</span></header><div class="report" id="adaptiveReport" aria-live="polite">等待決策與驗證</div></article>
+      </section>
+      <section class="side-section compact-list"><header><h2>自選清單</h2><button id="addWatchlist">＋ 加入目前標的</button></header><div id="watchlistItems">尚無自選標的</div></section>
+      <section class="side-section compact-list"><header><h2>分析摘要</h2></header><div id="analysisCards">載入分析中…</div></section>
+    </aside>
+  </main>
+  <dialog id="searchDialog"><form method="dialog" class="search-modal"><header><h2>搜尋標的</h2><button value="cancel" aria-label="關閉">×</button></header><input id="searchInput" autocomplete="off" placeholder="輸入代號或公司名稱"><div id="searchResults" role="listbox"><p>輸入關鍵字搜尋美股、台股與加密資產</p></div></form></dialog>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/static/js/vendor/lightweight-charts.standalone.js"></script><script type="module" src="/static/js/app.js?v=4"></script><script>document.querySelector('#mobileSidebar').addEventListener('click',()=>document.querySelector('#agentSidebar').classList.toggle('open'))</script>
+</body></html>

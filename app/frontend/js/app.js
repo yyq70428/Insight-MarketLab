@@ -1,0 +1,44 @@
+import {query,request} from "./api.js";import {drawLine} from "./chart.js";import {drawPrice,drawReplayMarkers} from "./price-chart.js?v=4";import {analysisSummary} from "./overlays.js";import {assertAnchor} from "./anchor-guard.js";import {money,compact,showToast,debounce,escapeHtml} from "./util.js";
+import {initPipeline} from './agent-pipeline.js?v=4';
+import {replayRows} from './replay-data.js';
+const state={symbol:localStorage.getItem("marketlab.symbol")||"0050.TW",interval:"1d",range:"5y",anchor:"",rows:[],analysis:null,toggles:{harmonics:true,zones:true,zigzag:false,rsi:true,macd:true},searchIndex:0};
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+async function load(){
+ const version=Symbol();state.loadVersion=version;clearTimeout(state.replayTimer);state.replaying=false;state.loading=true;state.anchorRows=[];
+ pipeline.contextChanged();$('#chartLoading').classList.remove('hidden');$('#chartLoading').textContent='正在載入行情與分析…';
+ try{
+  const params={symbol:state.symbol,interval:state.interval,range:state.range,anchor:state.anchor};
+  const[candles,analysis,quote,profile]=await Promise.all([query('/api/candles',params),query('/api/analysis',params),state.anchor?Promise.resolve(null):query('/api/quote',{symbol:state.symbol}).catch(()=>null),query('/api/profile',{symbol:state.symbol}).catch(()=>null)]);
+  if(state.loadVersion!==version)return;
+  state.rows=assertAnchor(candles.candles,state.anchor);state.analysis=analysis;state.anchorRows=state.rows;
+  $('#activeSymbol').textContent=state.symbol;$('#chartSymbol').textContent=state.symbol;$('#companyName').textContent=`${profile?.name||state.symbol} · ${state.interval}`;$('#newsName').value=profile?.name||'';
+  const last=state.rows.at(-1),previous=state.rows.at(-2);if(!last)throw new Error('此錨點沒有可用行情');
+  $('#ohlcLine').textContent=`開 ${money(last.open)}　高 ${money(last.high)}　低 ${money(last.low)}　收 ${money(last.close)}　量 ${compact(last.volume)}`;
+  $('#lastPrice').textContent=money(quote?.price??last.close);
+  const change=quote?.changePct??(previous?(last.close/previous.close-1)*100:null);
+  $('#priceChange').textContent=change==null?'—':`${change>=0?'+':''}${change.toFixed(2)}%`;$('#priceChange').className=change>=0?'positive':'negative';
+  $('#analysisCards').innerHTML=analysisSummary(analysis);const ind=analysis.indicators.at(-1);$('#rsiValue').textContent=ind?.rsi?.toFixed(1)??'—';$('#macdValue').textContent=ind?`MACD ${ind.macd.toFixed(2)}　訊號 ${ind.signal.toFixed(2)}`:'—';
+  $('#dataStatus').textContent=`已連線　資料來源：Yahoo Finance · ${candles.policy.count} 根${state.anchor?' · 錨點後資料已隔離':''}`;
+  render();state.loading=false;state.dataKey=`${state.symbol}:${state.interval}:${state.anchor}`;pipeline.contextChanged();$('#chartLoading').classList.add('hidden');
+ }catch(error){if(state.loadVersion!==version)return;state.loading=false;state.dataKey=null;pipeline.contextChanged();$('#chartLoading').textContent=error.message;$('#dataStatus').textContent='資料連線失敗';showToast(error.message)}
+}
+function render(){drawPrice($("#priceChart"),state.rows,state.analysis,state.toggles);drawLine($("#rsiChart"),state.analysis?.indicators,"rsi","#b39bd9",[0,100]);drawLine($("#macdChart"),state.analysis?.indicators,"macd","#3474ff")}
+async function selectSession(session){state.symbol=session.symbol;state.interval=session.interval;state.anchor=session.anchor;$('#anchorDate').value=session.anchor;$$('[data-interval]').forEach(b=>b.classList.toggle('active',b.dataset.interval===session.interval));await load()}
+function replay(report){
+ if(!report.decision?.frozenAt||!report.replay?.length)return;
+ if(state.loading||state.dataKey!==`${state.symbol}:${state.interval}:${state.anchor}`){showToast('錨點行情載入中，請稍候再回放');return}
+ try{replayRows(state.anchorRows,report.replay,0)}catch(error){showToast(error.message);return}
+ clearTimeout(state.replayTimer);const version=state.loadVersion;let count=0;state.replaying=true;
+ function step(){if(version!==state.loadVersion)return;count++;state.rows=replayRows(state.anchorRows,report.replay,count);render();drawReplayMarkers($('#priceChart'),report,state.rows.at(-1).time);$('#dataStatus').textContent=`紙上驗證回放 ${count}/${report.replay.length} 根 · 原始決策已凍結，指標維持錨點資料`;if(count<report.replay.length)state.replayTimer=setTimeout(step,550)}
+ step();
+}
+$$('[data-interval]').forEach(btn=>btn.onclick=()=>{state.interval=btn.dataset.interval;$$('[data-interval]').forEach(x=>x.classList.toggle("active",x===btn));load()});
+$$('[data-toggle]').forEach(btn=>btn.onclick=()=>{const key=btn.dataset.toggle;state.toggles[key]=!state.toggles[key];btn.classList.toggle("active",state.toggles[key]);if(key==="rsi")$("#rsiPanel").classList.toggle("hidden",!state.toggles[key]);else if(key==="macd")$("#macdPanel").classList.toggle("hidden",!state.toggles[key]);render()});
+$$('[data-close]').forEach(btn=>btn.onclick=()=>document.querySelector(`[data-toggle="${btn.dataset.close}"]`).click());
+$("#anchorDate").onchange=e=>{state.anchor=e.target.value;load()};$("#clearAnchor").onclick=()=>{$("#anchorDate").value="";state.anchor="";load()};
+const dialog=$("#searchDialog"),input=$("#searchInput"),results=$("#searchResults");function openSearch(){dialog.showModal();input.value="";results.innerHTML="<p>輸入關鍵字搜尋美股、台股與加密資產</p>";setTimeout(()=>input.focus(),10)}$("#openSearch").onclick=openSearch;document.addEventListener("keydown",e=>{if(e.key==="/"&&!dialog.open){e.preventDefault();openSearch()}if(dialog.open&&["ArrowDown","ArrowUp"].includes(e.key)){e.preventDefault();const rows=$$(".search-result");if(!rows.length)return;state.searchIndex=(state.searchIndex+(e.key==="ArrowDown"?1:-1)+rows.length)%rows.length;rows.forEach((r,i)=>r.classList.toggle("active",i===state.searchIndex))}if(dialog.open&&e.key==="Enter"){const row=$$(".search-result")[state.searchIndex];if(row){e.preventDefault();row.click()}}});
+input.oninput=debounce(async()=>{if(!input.value.trim())return;results.innerHTML="<p>搜尋中…</p>";try{const data=await query("/api/search",{q:input.value.trim()});state.searchIndex=0;results.innerHTML=data.results.length?data.results.map((r,i)=>`<button type="button" class="search-result ${i===0?"active":""}" data-symbol="${escapeHtml(r.symbol)}"><strong>${escapeHtml(r.symbol)}<br><span>${escapeHtml(r.name)}</span></strong><span>${escapeHtml(r.exchange)} · ${escapeHtml(r.type)}</span></button>`).join(""):"<p>找不到可交易標的</p>";$$('.search-result').forEach(row=>row.onclick=()=>{state.symbol=row.dataset.symbol;localStorage.setItem("marketlab.symbol",state.symbol);dialog.close();load()})}catch(e){results.innerHTML=`<p>${escapeHtml(e.message)}</p>`}},300);
+$$('.weights input').forEach(input=>input.oninput=()=>input.parentElement.querySelector("output").textContent=`${Number(input.value).toFixed(1)}%`);$("#executionWeight").oninput=e=>e.target.parentElement.querySelector("output").textContent=`技術 ${e.target.value}% / 新聞 ${100-e.target.value}%`;$("#confidence").oninput=e=>e.target.parentElement.querySelector("output").textContent=`${e.target.value}%`;
+const pipeline=initPipeline({getContext:()=>({symbol:state.symbol,interval:state.interval,anchor:state.anchor,chartReady:!state.loading&&state.dataKey===`${state.symbol}:${state.interval}:${state.anchor}`}),selectSession,replay});
+async function loadWatchlist(){try{const data=await request("/api/watchlist");localStorage.setItem("marketlab.watchlist",JSON.stringify(data.items.map(x=>x.symbol)));renderWatch(data.items.map(x=>x.symbol))}catch{renderWatch(JSON.parse(localStorage.getItem("marketlab.watchlist")||"[]"))}}function renderWatch(items){$("#watchlistItems").innerHTML=items.length?items.map(s=>`<button class="analysis-chip watch-symbol" data-symbol="${s}">${s}</button>`).join(""):"尚無自選標的";$$('.watch-symbol').forEach(b=>b.onclick=()=>{state.symbol=b.dataset.symbol;load()})}$("#addWatchlist").onclick=async()=>{try{await request("/api/watchlist",{method:"POST",body:JSON.stringify({symbol:state.symbol})})}catch{const list=JSON.parse(localStorage.getItem("marketlab.watchlist")||"[]");if(!list.includes(state.symbol))list.push(state.symbol);localStorage.setItem("marketlab.watchlist",JSON.stringify(list))}loadWatchlist()};
+$("#toggleSidebar").onclick=()=>$("#agentSidebar").classList.toggle("open");document.querySelector(".topbar").onclick=e=>{if(innerWidth<=900&&e.target===e.currentTarget)$("#agentSidebar").classList.toggle("open")};addEventListener("resize",debounce(render,100));$("#clearDrawings").onclick=()=>showToast("手動畫線已清除");loadWatchlist();load().then(()=>pipeline.restore());

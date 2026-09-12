@@ -1,0 +1,8 @@
+# symbol|industry
+0050.TW|ETF
+2330.TW|半導體
+AAPL|科技
+MSFT|科技
+NVDA|半導體
+BTC-USD|加密資產
+ETH-USD|加密資產

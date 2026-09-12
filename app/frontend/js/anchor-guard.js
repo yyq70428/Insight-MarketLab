@@ -1,0 +1,1 @@
+export function assertAnchor(rows, anchor){if(!anchor)return rows;const cutoff=new Date(`${anchor}T23:59:59`).getTime()/1000;const filtered=rows.filter(row=>row.time<=cutoff);if(filtered.some(row=>row.time>cutoff))throw new Error("錨點隔離失敗");return filtered}
