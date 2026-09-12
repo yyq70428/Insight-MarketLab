@@ -135,10 +135,9 @@ export function initPipeline({getContext, selectSession, replay, syncSession}) {
       const result=!r.validation?.complete?(r.completed?'等待後續 K 線':'分析中'):
         r.action==='HOLD'?`${r.validation.success?'預測成功':'預測未成功'} · 0.00%`:
         `${net>0?'獲利':net<0?'虧損':'損益兩平'} · ${net>0?'+':''}${money(net)}%`;
-      return `<button type="button" class="batch-round" data-session="${esc(r.sessionId)}"><span>${esc(r.anchor)} · ${esc(r.action||'—')} · ${money(r.confidence)}%</span><span>${result}</span></button>`;
+      return `<a class="batch-round" href="/prediction?session=${encodeURIComponent(r.sessionId)}" target="_blank" rel="noopener noreferrer" title="開啟這一輪預測詳情"><span>${esc(r.anchor)} · ${esc(r.action||'—')} · ${money(r.confidence)}%</span><span>${result}</span></a>`;
     }).join('');
     $('#refreshBatch').classList.toggle('hidden',row.status!=='waiting_validation');
-    document.querySelectorAll('.batch-round').forEach(button=>button.onclick=()=>adoptSession(button.dataset.session));
   }
 
   async function adoptSession(id) {

@@ -94,7 +94,8 @@ async function showSession(id){
  clearTimeout(detailTimer);const s=await request('/api/flow/sessions/'+id),dialog=$('#sessionDetail');
  const sessionStatus={first_layer:'第一層分析',execution:'第二層決策',adaptive:'第三層審核',completed:'完成',failed:'失敗'}[s.status]||s.status;
  $('#detailTitle').textContent=s.symbol+' · '+s.anchor+' · '+sessionStatus;
- $('#detailContent').innerHTML='<p>Session '+esc(s.id)+' · 前一輪 '+esc(s.previousSessionId||'無')+'</p>'+(s.error?'<p class="negative">'+esc(s.error)+'</p>':'')+
+ $('#detailContent').innerHTML='<p>Session '+esc(s.id)+' · 前一輪 '+esc(s.previousSessionId||'無')+'</p>'+
+ '<p><a class="primary" href="/prediction?session='+encodeURIComponent(id)+'" target="_blank" rel="noopener noreferrer">開啟預測流程視覺化</a></p>'+(s.error?'<p class="negative">'+esc(s.error)+'</p>':'')+
  Object.entries(s.runs).map(([agent,runs])=>'<h3>'+names[agent]+'</h3>'+agentOverview(agent,runs)+(runs.length?runs.map(run=>'<details><summary>'+esc(run.role==='champion'?'主報告':run.role.replace('shadow:','影子候選 · '))+' · '+esc({completed:'完成',running:'執行中',failed:'失敗'}[run.status]||run.status)+' · '+esc(run.strategyVersionId||'')+'</summary>'+(run.error?'<p>'+esc(run.error)+'</p>':'')+'<h4>輸入參數</h4>'+json(run.params)+'<h4>完整報告</h4>'+json(run.report||run.decision)+'</details>').join(''):'')).join('')+
  '<details><summary>新聞品質評審</summary>'+json(s.newsEvaluations)+'</details><details><summary>版本與差異</summary>'+json(s.relatedVersions)+'</details><details><summary>事件時間軸</summary>'+json(s.events)+'</details>';
  if(!dialog.open)dialog.showModal();

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>預測流程｜Kinetic Charts</title>
+  <link rel="stylesheet" href="/static/css/prediction.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/dashboard"><span class="mark"><i></i><i></i><i></i></span>Kinetic Charts</a>
+    <span class="eyebrow">PREDICTION JOURNEY</span>
+    <a class="back" href="/dashboard">返回自適應後台 ↗</a>
+  </header>
+  <main>
+    <section id="hero" class="hero"><p class="muted">讀取這一輪預測…</p></section>
+    <div id="error" class="error" hidden></div>
+    <section id="story" class="story" hidden>
+      <div class="timeline" aria-label="預測流程">
+        <div class="line"></div>
+        <button class="step active" data-step="data"><b>01</b><span>資料範圍</span></button>
+        <button class="step" data-step="technical"><b>02</b><span>技術面</span></button>
+        <button class="step" data-step="news"><b>03</b><span>新聞面</span></button>
+        <button class="step" data-step="execution"><b>04</b><span>整合決策</span></button>
+        <button class="step" data-step="replay"><b>05</b><span>紙上驗證</span></button>
+        <button class="step" data-step="adaptive"><b>06</b><span>自適應</span></button>
+      </div>
+      <div id="cards" class="cards"></div>
+    </section>
+  </main>
+  <style>.signal span{display:block}.signal small{display:block;min-height:30px;margin-top:7px;color:#626c7e;font-size:10px;line-height:1.45}.integration-breakdown{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:20px 0}.integration-breakdown>div{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:14px 16px;border:1px solid #2b3445;border-radius:9px;background:#111620}.integration-breakdown small,.integration-breakdown span{color:#8992a4;font-size:11px}.integration-breakdown b{font-size:22px}.integration-breakdown em{grid-column:1/-1;color:#35c7ae;font-style:normal;font-size:12px}.adaptive-answer{margin-top:22px;padding-top:16px;border-top:1px solid #2b3445}.adaptive-answer h3{margin:0 0 8px;font-size:14px}.answer-yes{color:#35c7ae}.answer-wait{color:#f1b65a}.validation-list{display:grid;gap:10px}.validation-item{padding:13px 15px;border:1px solid #2b3445;border-radius:9px;background:#111620}.validation-item>div{display:flex;justify-content:space-between}.validation-item p{margin:5px 0 0;color:#8992a4;font-size:12px}.adaptive-changes{display:grid;gap:10px}.adaptive-change{padding:14px 16px;border:1px solid #2b3445;border-radius:9px;background:#111620}.change-title{display:flex;justify-content:space-between;margin-bottom:8px}.change-title span{color:#f1b65a;font-size:11px}.change-row{display:flex;gap:12px;padding:4px 0;border-top:1px solid #202737;font-size:11px}.change-row b{min-width:145px;color:#e5e8ef}.change-row span{color:#8992a4;word-break:break-word}.adaptive-change p{margin:10px 0 0;color:#8992a4;font-size:12px}@media(max-width:700px){.integration-breakdown{grid-template-columns:1fr}.change-row{display:block}.change-row b{display:block;margin-bottom:2px}.validation-item>div{display:block}}</style>
+  <script src="/static/js/prediction.js"></script>
+</body>
+</html>

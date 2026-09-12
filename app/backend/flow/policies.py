@@ -53,7 +53,13 @@ class NewsPolicy(StrictPolicy):
 
 
 class ExecutionPolicy(StrictPolicy):
-    technicalWeight: float = Field(.5, ge=0, le=1)
+    # Baseline weighting favours the price-derived report.  Strong, well-covered
+    # news can move part of that weight into the news report at decision time.
+    technicalWeight: float = Field(.65, ge=0, le=1)
+    dynamicNewsWeight: bool = True
+    newsEventThreshold: float = Field(.20, ge=.05, le=.45)
+    newsEventCoverage: float = Field(.70, ge=0, le=1)
+    newsEventBoost: float = Field(.15, ge=0, le=.30)
     minConfidence: float = Field(52, ge=0, le=100)
     maxHoldingBars: int = Field(5, ge=1, le=7)
     holdThresholdPct: float = Field(2, ge=.1, le=20)
@@ -68,7 +74,9 @@ POLICY_SCHEMA = {
     "technical.weights.*": [0, 100], "technical.macdFast": [5, 20], "technical.macdSlow": [21, 60],
     "technical.macdSignal": [3, 20], "technical.rsiPeriod": [7, 28], "technical.formingDiscount": [0, 1],
     "news.lookbackDays": [7, 90], "news.rounds": [3, 5], "news.stockWeight": [.2, .9],
-    "execution.technicalWeight": [0, 1], "execution.minConfidence": [0, 100],
+    "execution.technicalWeight": [0, 1], "execution.newsEventThreshold": [.05, .45],
+    "execution.newsEventCoverage": [0, 1], "execution.newsEventBoost": [0, .30],
+    "execution.minConfidence": [0, 100],
     "execution.maxHoldingBars": [1, 7], "execution.holdThresholdPct": [.1, 20],
     "adaptive.minShadowSessions": [8, 100], "adaptive.minImprovementPct": [.1, 20],
 }

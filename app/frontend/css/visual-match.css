@@ -300,7 +300,8 @@
 }
 
 .batch-progress { margin-top: 12px; line-height: 1.6; }
-.batch-round { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 8px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--line); text-align: left; }
+.batch-round { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 8px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--line); text-align: left; text-decoration: none; cursor: pointer; }
+.batch-round:hover { color: var(--accent); }
 .batch-round span:last-child { color: var(--muted); }
 #batchRounds { max-height: 200px; overflow-y: auto; margin: 8px 0; }
 .replay-actions { flex-wrap: wrap; margin: 10px 0 18px; }

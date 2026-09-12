@@ -184,7 +184,7 @@ def legacy_news_agent(body: NewsAgentRequest):
 class ExecutionRequest(BaseModel):
     technicalReportId: str
     newsReportId: str
-    technicalWeight: float = Field(.5, ge=0, le=1)
+    technicalWeight: float = Field(.65, ge=0, le=1)
     minConfidence: float = Field(52, ge=0, le=100)
     maxHoldingBars: int = Field(5, ge=1, le=7)
     holdThresholdPct: float = Field(2, ge=.1, le=20)
@@ -278,6 +278,9 @@ def home_page(): return page("index.html")
 
 @app.get("/dashboard", include_in_schema=False)
 def dashboard_page(): return page("dashboard.html")
+
+@app.get("/prediction", include_in_schema=False)
+def prediction_page(): return page("prediction.html")
 
 
 @app.get("/scanner", include_in_schema=False)
