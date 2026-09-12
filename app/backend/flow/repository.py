@@ -98,6 +98,12 @@ class FlowRepository:
         session["jobActive"] = bool(self.db.flow_jobs.find_one({"sessionId": session_id, "active": True}))
         session["newsEvaluations"] = public(list(self.db.news_evaluations.find({"sessionId": session_id})))
         identifiers = list(session.get('versions', {}).values()) + list(session.get('baseVersions', {}).values())
+        # Include adaptive candidates created by this session so the prediction
+        # journey can explain parameter changes instead of showing only IDs.
+        learning = session.get('learningResult') or {}
+        identifiers += list(learning.get('candidates') or [])
+        identifiers += [row['id'] for row in self.db.strategy_versions.find(
+            {'sessionId': session_id, 'status': 'candidate'}, {'id': 1})]
         session["relatedVersions"] = public(list(self.db.strategy_versions.find({'id': {'$in': identifiers}})))
         return session
 
