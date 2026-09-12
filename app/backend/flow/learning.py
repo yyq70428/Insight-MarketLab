@@ -136,7 +136,10 @@ def adapt_session(runtime, session):
         proposals.append(('execution', candidate, {'reason': '本輪未成功，提出提高信心門檻的影子候選'}))
     created = []
     for agent, params, evidence in proposals:
-        if repo.db.strategy_versions.find_one({'id': {'$exists': True}, 'scope': session['scope'], 'agent': agent, 'status': 'candidate', 'parentVersionId': session['baseVersions'][agent]}): continue
+        active_candidates = repo.db.strategy_versions.count_documents({
+            'id': {'$exists': True}, 'scope': session['scope'], 'agent': agent, 'status': 'candidate',
+            'parentVersionId': session['baseVersions'][agent]})
+        if active_candidates >= policy.get('maxCandidatesPerAgent', 2): continue
         identifier = uuid4().hex
         repo.db.strategy_versions.insert_one({'id': identifier, 'scope': session['scope'], 'agent': agent,
             'status': 'candidate', 'kind': 'adaptive', 'params': params, 'parentVersionId': session['baseVersions'][agent],
@@ -160,6 +163,15 @@ def adapt_session(runtime, session):
             if not scores or any(v is None or v < policy['faithfulnessThreshold'] for v in scores):
                 evaluation.update(passed=False, reason='忠實度評審缺少或未達門檻，新聞候選不可自動提升')
             evaluation['faithfulness'] = min(scores) if scores and all(v is not None for v in scores) else None
+        rejection_threshold = policy.get('rejectAfterShadowSessions', 4)
+        rejected = (evaluation['sampleCount'] >= rejection_threshold and
+                    evaluation['meanImprovementPct'] < policy['minImprovementPct'] and
+                    not evaluation['passed'])
+        if rejected:
+            evaluation.update(rejected=True, reason='影子樣本達到淘汰門檻，平均改善未達最低要求')
+            repo.db.strategy_versions.update_one({'id': candidate['id'], 'status': 'candidate'}, {'$set': {
+                'status': 'rejected', 'rejectedAt': now(), 'rejectionReason': evaluation['reason']}})
+            repo.event(session, candidate['agent'], 'candidate_rejected', versionId=candidate['id'], evaluation=evaluation)
         evaluations.append({'candidateId': candidate['id'], **evaluation})
         repo.event(session, candidate['agent'], 'shadow_evaluated', versionId=candidate['id'], evaluation=evaluation)
         head = repo.db.strategy_heads.find_one({'scope': session['scope']})

@@ -216,7 +216,10 @@ class FlowRuntime:
 
     def _adaptive(self, session):
         session = self.repo.get_session(session['id'])
-        report = adaptive_report(session.get('outcome', {}), session['params']['adaptive']['minShadowSessions'])
+        adaptive = session['params']['adaptive']
+        report = adaptive_report(session.get('outcome', {}), adaptive['minShadowSessions'],
+                                 adaptive.get('maxCandidatesPerAgent', 2),
+                                 adaptive.get('rejectAfterShadowSessions', 4))
         from .learning import adapt_session
         report.update(adapt_session(self, session))
         return report

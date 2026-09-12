@@ -69,6 +69,8 @@ class AdaptivePolicy(StrictPolicy):
     minShadowSessions: int = Field(8, ge=8, le=100)
     minImprovementPct: float = Field(.1, ge=.1, le=20)
     faithfulnessThreshold: float = Field(.8, ge=0, le=1)
+    maxCandidatesPerAgent: int = Field(2, ge=1, le=5)
+    rejectAfterShadowSessions: int = Field(4, ge=1, le=20)
 
 POLICY_SCHEMA = {
     "technical.weights.*": [0, 100], "technical.macdFast": [5, 20], "technical.macdSlow": [21, 60],
@@ -79,6 +81,7 @@ POLICY_SCHEMA = {
     "execution.minConfidence": [0, 100],
     "execution.maxHoldingBars": [1, 7], "execution.holdThresholdPct": [.1, 20],
     "adaptive.minShadowSessions": [8, 100], "adaptive.minImprovementPct": [.1, 20],
+    "adaptive.maxCandidatesPerAgent": [1, 5], "adaptive.rejectAfterShadowSessions": [1, 20],
 }
 
 POLICY_MODELS = {"technical": TechnicalPolicy, "news": NewsPolicy, "execution": ExecutionPolicy, "adaptive": AdaptivePolicy}
