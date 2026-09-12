@@ -18,7 +18,7 @@ router = APIRouter(prefix='/api/flow')
 
 def checked(call):
     try:
-        repository.require()
+        repository.initialize()
         return call()
     except HTTPException: raise
     except FlowConflict as exc: raise HTTPException(409, str(exc)) from exc
@@ -222,7 +222,7 @@ def strategy(agent: str, body: StrategyUpdate):
 @router.get('/versions')
 def versions(scope: str, agent: str | None = None):
     scope = validated_scope(scope)
-    query = {'scope': scope}
+    query = {'scope': scope, 'id': {'$exists': True}}
     if agent: query['agent'] = agent
     return checked(lambda: {'versions': public(list(repository.db.strategy_versions.find(query).sort('createdAt', -1).limit(200)))})
 

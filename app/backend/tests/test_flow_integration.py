@@ -22,7 +22,8 @@ from app.backend.services.time_boundary import anchor_cutoff, candle_day
 def repo():
     row = FlowRepository()
     if not row.available(): pytest.skip('MongoDB integration service unavailable')
-    database_name = 'marketlab_test_' + uuid4().hex
+    # Atlas database names are limited to 38 bytes.
+    database_name = 'mltest_' + uuid4().hex[:24]
     row.db = row.client[database_name]
     row.ensure_indexes()
     try: yield row
@@ -118,6 +119,44 @@ def test_batch_94_calendar_day_limit_is_inclusive(flow, monkeypatch):
         rt.create_batch('0050.TW',start,start+timedelta(days=94))
     with pytest.raises(RuntimeError,match='passed date gate'):
         rt.create_batch('0050.TW',start,start+timedelta(days=93))
+
+
+def test_duplicate_active_batch_is_rejected_and_terminal_range_can_run_again(flow, monkeypatch):
+    rt, anchor, _ = flow
+    monkeypatch.setattr(rt.executor, 'submit', lambda *args, **kwargs: None)
+    start = date.fromisoformat(anchor)
+    first = rt.create_batch('0050.TW', start, start+timedelta(days=1))
+    with pytest.raises(FlowConflict, match='已有執行中的批次'):
+        rt.create_batch('0050.TW', start, start+timedelta(days=1))
+    rt.repo.db.flow_batches.update_one({'id': first['id']}, {'$set': {'status': 'failed'}, '$unset': {'activeKey': ''}})
+    assert rt.create_batch('0050.TW', start, start+timedelta(days=1))['id'] != first['id']
+
+
+def test_initialize_interrupts_stale_batch_without_deleting_progress(repo):
+    repo.db.flow_batches.insert_one({'id':'stale-batch','activeKey':'0050.TW:1d:2025-01-01:2025-01-02',
+        'status':'running','updatedAt':'2025-01-02T00:00:00+00:00',
+        'completedRounds':3,'rounds':[{'anchor':'2025-01-01'}]})
+    repo.db.flow_batches.insert_one({'id':'live-batch','activeKey':'0050.TW:1d:2025-01-03:2025-01-04',
+        'status':'running','updatedAt':datetime.now(timezone.utc), 'completedRounds':1,'rounds':[]})
+    repo.initialize()
+    row=repo.db.flow_batches.find_one({'id':'stale-batch'})
+    assert row['status']=='interrupted' and row['completedRounds']==3 and row['rounds']==[{'anchor':'2025-01-01'}]
+    assert 'activeKey' not in row
+    assert repo.db.flow_batches.find_one({'id':'live-batch'})['status']=='running'
+
+
+def test_legacy_candidate_without_current_id_is_ignored(flow):
+    rt, anchor, _ = flow
+    rt.repo.db.strategy_versions.insert_one({'scope':'0050.TW:1d','agent':'execution','status':'candidate',
+        'params':deepcopy(DEFAULT_POLICIES['execution']),'parentVersionId':'legacy','createdAt':datetime.now(timezone.utc)})
+    session=rt.create_session('0050.TW','1d',anchor)
+    assert rt.run_session(session['id'])['status']=='completed'
+
+
+def test_key_error_is_not_reported_as_market_data_failure(flow):
+    rt,_,_=flow
+    message=rt.error_message(KeyError('id'))
+    assert '資料結構不相容' in message and '行情資料不足' not in message
 
 
 def test_partial_labels_do_not_count_or_learn_and_refresh_keeps_decision(flow):

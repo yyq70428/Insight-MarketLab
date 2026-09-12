@@ -10,7 +10,8 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       DATABASE_URL: postgresql://${POSTGRES_USER:-marketlab}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-marketlab}
-      MONGODB_URI: mongodb://mongo:27017/marketlab
+      MONGODB_URI: ${MONGODB_URI:?請在 .env 設定 MONGODB_URI；使用本機 MongoDB 時請同時啟用 local-mongo profile}
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-marketlab}
     ports:
       - "127.0.0.1:9021:8000"
       - "127.0.0.1:9022:8000"
@@ -21,6 +22,7 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+        required: false
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
@@ -46,6 +48,7 @@ services:
       retries: 12
   mongo:
     image: mongo:7
+    profiles: ["local-mongo"]
     volumes:
       - mongo_data:/data/db
     healthcheck:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from threading import Lock
 from uuid import uuid4
 
 from pymongo import ASCENDING, DESCENDING, MongoClient
@@ -31,6 +32,8 @@ class FlowRepository:
         settings = get_settings()
         self.client = MongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=4500, tz_aware=True) if settings.mongodb_uri else None
         self.db = self.client[settings.mongodb_database] if self.client else None
+        self._initialized = False
+        self._initialization_lock = Lock()
 
     def available(self) -> bool:
         if not self.client:
@@ -45,17 +48,36 @@ class FlowRepository:
         if not self.available():
             raise RuntimeError("MongoDB 未設定或目前無法連線")
 
+    def initialize(self):
+        """Initialize once per process, retrying on the first request if startup missed Atlas."""
+        if self._initialized: return
+        with self._initialization_lock:
+            if self._initialized: return
+            self.require()
+            self.interrupt_stale_work()
+            self.ensure_indexes()
+            self._initialized = True
+
+    @staticmethod
+    def _current_id_index(collection):
+        if any(info.get('key') == [('id', 1)] for info in collection.index_information().values()): return
+        collection.create_index('id', unique=True, name='current_id_unique',
+                                partialFilterExpression={'id': {'$type': 'string'}})
+
     def ensure_indexes(self):
         self.require()
-        self.db.sessions.create_index("id", unique=True)
+        self._current_id_index(self.db.sessions)
         self.db.sessions.create_index([("scope", ASCENDING), ("anchor", DESCENDING)])
         for name in ("technical_runs", "news_runs", "execution_runs", "adaptive_runs", "news_evaluations"):
             self.db[name].create_index([("sessionId", ASCENDING), ("role", ASCENDING)], unique=True)
-        self.db.strategy_versions.create_index("id", unique=True)
-        self.db.strategy_heads.create_index("scope", unique=True)
-        self.db.flow_jobs.create_index("id", unique=True)
+        self._current_id_index(self.db.strategy_versions)
+        if not any(info.get('key') == [('scope', 1)] for info in self.db.strategy_heads.index_information().values()):
+            self.db.strategy_heads.create_index('scope', unique=True, name='current_scope_unique',
+                                                partialFilterExpression={'scope': {'$type': 'string'}})
+        self._current_id_index(self.db.flow_jobs)
         self.db.flow_jobs.create_index("sessionId", unique=True, partialFilterExpression={"active": True}, name="one_active_job")
-        self.db.flow_batches.create_index("id", unique=True)
+        self._current_id_index(self.db.flow_batches)
+        self.db.flow_batches.create_index('activeKey', unique=True, sparse=True, name='one_active_batch')
         self.db.strategy_shadow_samples.create_index([("candidateId", 1), ("sessionId", 1)], unique=True)
 
     def create_session(self, payload: dict) -> dict:
@@ -115,13 +137,33 @@ class FlowRepository:
 
     def interrupt_stale_work(self):
         error = "應用於執行中重新啟動；請建立新的執行工作"
-        for name in ("flow_jobs", "flow_batches"):
-            self.db[name].update_many({"status": {"$in": ["queued", "running"]}},
+        # A second computer may legitimately be running against the same Atlas DB.
+        # Only reclaim work with no heartbeat for 30 minutes (or legacy rows with no timestamps).
+        stale_before = now() - timedelta(minutes=30)
+        stale_before_iso = stale_before.isoformat()
+        stale = {"$or": [
+            {"updatedAt": {"$lt": stale_before}},
+            {"updatedAt": {"$lt": stale_before_iso}},
+            {"updatedAt": {"$exists": False}, "startedAt": {"$lt": stale_before}},
+            {"updatedAt": {"$exists": False}, "startedAt": {"$lt": stale_before_iso}},
+            {"updatedAt": {"$exists": False}, "startedAt": {"$exists": False}, "createdAt": {"$lt": stale_before}},
+            {"updatedAt": {"$exists": False}, "startedAt": {"$exists": False}, "createdAt": {"$lt": stale_before_iso}},
+            {"updatedAt": {"$exists": False}, "startedAt": {"$exists": False}, "createdAt": {"$exists": False}},
+        ]}
+        self.db.flow_jobs.update_many({"status": {"$in": ["queued", "running"]}, **stale},
                                      {"$set": {"status": "interrupted", "active": False, "error": error, "updatedAt": now()}})
+        self.db.flow_batches.update_many({"status": {"$in": ["queued", "running"]}, **stale},
+                                        {"$set": {"status": "interrupted", "error": error, "updatedAt": now()},
+                                         "$unset": {"activeKey": ""}})
         for agent in ("technical", "news", "execution", "adaptive"):
-            for run in self.db[f"{agent}_runs"].find({"status": "running", "role": "champion"}):
-                self.finish_run(agent, run["sessionId"], "champion", error=error)
-                self.update_session(run["sessionId"], status="failed", error=error)
+            for run in self.db[f"{agent}_runs"].find({"status": "running", "role": "champion", **stale}):
+                session_id = run.get("sessionId")
+                if session_id:
+                    self.finish_run(agent, session_id, "champion", error=error)
+                    self.update_session(session_id, status="failed", error=error)
+                else:
+                    self.db[f"{agent}_runs"].update_one({"_id": run["_id"]}, {"$set": {
+                        "status": "interrupted", "error": error, "completedAt": now()}})
 
     def overview(self, scope: str | None = None):
         self.require()
@@ -133,7 +175,7 @@ class FlowRepository:
         return {"total": len(rows), "completed": sum(row.get("status") == "completed" for row in rows),
                 "waitingValidation": sum(row.get("status") == "completed" and not row.get("labelComplete") for row in rows),
                 "returnSummary": split_return_summary(returns), "failed": sum(row.get("status") == "failed" for row in rows),
-                "onlineRounds": sum(bool(row.get("labelComplete")) for row in rows), "pendingCandidates": self.db.strategy_versions.count_documents({**query, "status": "candidate"}),
+                "onlineRounds": sum(bool(row.get("labelComplete")) for row in rows), "pendingCandidates": self.db.strategy_versions.count_documents({**query, "id": {"$exists": True}, "status": "candidate"}),
                 "curve": [{"anchor": row.get("anchor"), "value": round(sum(returns[:i+1])/(i+1), 3)} for i, row in enumerate(completed)],
                 "recentEvents": [public(row) for row in self.db.strategy_events.find(query).sort("createdAt", DESCENDING).limit(10)]}
 

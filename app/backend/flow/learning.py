@@ -56,7 +56,7 @@ def prepare_shadows(runtime, session, technical, news):
     from ..analysis.technical_agent import technical_report
     from ..services.agent_pipeline import execution_decision, news_report
     repo = runtime.repo
-    candidates = list(repo.db.strategy_versions.find({'scope': session['scope'], 'status': 'candidate',
+    candidates = list(repo.db.strategy_versions.find({'id': {'$exists': True}, 'scope': session['scope'], 'status': 'candidate',
         'effectiveAt': {'$lt': anchor_cutoff(session['symbol'], session['anchor'])}}).sort('createdAt', -1))
     used_agents = set()
     for candidate in candidates:
@@ -136,7 +136,7 @@ def adapt_session(runtime, session):
         proposals.append(('execution', candidate, {'reason': '本輪未成功，提出提高信心門檻的影子候選'}))
     created = []
     for agent, params, evidence in proposals:
-        if repo.db.strategy_versions.find_one({'scope': session['scope'], 'agent': agent, 'status': 'candidate', 'parentVersionId': session['baseVersions'][agent]}): continue
+        if repo.db.strategy_versions.find_one({'id': {'$exists': True}, 'scope': session['scope'], 'agent': agent, 'status': 'candidate', 'parentVersionId': session['baseVersions'][agent]}): continue
         identifier = uuid4().hex
         repo.db.strategy_versions.insert_one({'id': identifier, 'scope': session['scope'], 'agent': agent,
             'status': 'candidate', 'kind': 'adaptive', 'params': params, 'parentVersionId': session['baseVersions'][agent],
@@ -145,7 +145,7 @@ def adapt_session(runtime, session):
         repo.event(session, agent, 'candidate_proposed', versionId=identifier, effectiveAt=effective)
         created.append(identifier)
     evaluations = []
-    for candidate in repo.db.strategy_versions.find({'scope': session['scope'], 'status': 'candidate'}):
+    for candidate in repo.db.strategy_versions.find({'id': {'$exists': True}, 'scope': session['scope'], 'status': 'candidate'}):
         if repo.db.strategy_events.find_one({'action': 'candidate_promoted', 'sourceVersionId': candidate['id']}): continue
         samples = list(repo.db.strategy_shadow_samples.find({'candidateId': candidate['id']}).sort('windowStart', 1))
         selected, last_end = [], -1

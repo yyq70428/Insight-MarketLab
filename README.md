@@ -17,13 +17,21 @@ cp .env.example .env
 docker compose -f deploy/docker-compose.yml --env-file .env up --build
 ```
 
-Compose 對外只綁定 `127.0.0.1`：應用為 9021、9022，PostgreSQL 為 9023；MongoDB 僅存在容器網路內。
+Compose 對外只綁定 `127.0.0.1`：應用為 9021、9022，PostgreSQL 為 9023。預設直接使用 `.env` 的 `MONGODB_URI`，不啟動本機 MongoDB；兩台電腦設定同一個 Atlas URI 與 database 時會讀取相同的 Agent／區間回測資料。
 
 已有 `.env` 時，直接在專案根目錄執行：
 
 ```bash
 docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
 ```
+
+若要改用本機 MongoDB，將 `.env` 設為 `MONGODB_URI=mongodb://mongo:27017/marketlab`，並明確啟用 profile：
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file .env --profile local-mongo up -d --build
+```
+
+本機與 Atlas 是兩套不同資料庫；切換 URI 不會自動搬移既有回測資料。
 
 開啟 [工作台](http://127.0.0.1:9021/) 或 [Agent 後台](http://127.0.0.1:9021/dashboard)。Compose 已固定名稱 `insight-marketlab`，避免其他同名 `deploy` 專案互相替換容器。
 

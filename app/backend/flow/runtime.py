@@ -95,6 +95,7 @@ class FlowRuntime:
     def error_message(self, exc):
         logging.getLogger(__name__).error('Flow failure (%s)', type(exc).__name__, exc_info=exc)
         if isinstance(exc, (ModelUnavailable, FlowConflict)): return str(exc)
+        if isinstance(exc, KeyError): return '資料結構不相容，已停止此輪；請檢查舊版策略資料'
         if isinstance(exc, LookupError): return '行情資料不足或來源目前不可用'
         return '執行失敗，請檢查行情、歷史新聞與模型服務後建立新輪次'
 
@@ -229,14 +230,22 @@ class FlowRuntime:
         anchors = sorted({candle_day(symbol, '1d', row['time']).isoformat() for row in rows
                           if start <= candle_day(symbol, '1d', row['time']) <= end and candle_closed(symbol,'1d',row['time'])})
         if not anchors: raise ValueError('此區間沒有可用交易日行情')
-        batch = {'id': uuid4().hex, 'symbol': symbol, 'interval': '1d', 'startDate': start.isoformat(), 'endDate': end.isoformat(),
+        active_key = f'{symbol}:1d:{start.isoformat()}:{end.isoformat()}'
+        batch = {'id': uuid4().hex, 'activeKey': active_key, 'symbol': symbol, 'interval': '1d', 'startDate': start.isoformat(), 'endDate': end.isoformat(),
             'anchors': anchors, 'totalRounds': len(anchors), 'completedRounds': 0, 'currentRound': 0, 'currentStage': 'waiting',
             'sessionIds': [], 'rounds': [], 'stats': {'BUY': 0, 'SELL': 0, 'HOLD': 0}, 'successCount': 0, 'successRate': None,
             'validatedRounds': 0, 'pendingValidation': 0, 'initialOverrides': overrides or {},
             'maxHoldingDays': params['maxHoldingBars'], 'holdThresholdPct': params['holdThresholdPct'],
             'status': 'queued', 'createdAt': now(), 'symbolName':symbol_name, 'lastAvailableDate': candle_day(symbol, '1d', rows[-1]['time']).isoformat()}
-        self.repo.db.flow_batches.insert_one(batch)
-        self.executor.submit(self.run_batch, batch['id'])
+        try: self.repo.db.flow_batches.insert_one(batch)
+        except DuplicateKeyError as exc: raise FlowConflict('相同標的與日期區間已有執行中的批次') from exc
+        try:
+            self.executor.submit(self.run_batch, batch['id'])
+        except Exception:
+            self.repo.db.flow_batches.update_one({'id': batch['id']}, {
+                '$set': {'status': 'failed', 'error': '背景工作無法啟動', 'completedAt': now()},
+                '$unset': {'activeKey': ''}})
+            raise
         return public(batch)
 
     def run_batch(self, batch_id):
@@ -256,9 +265,11 @@ class FlowRuntime:
                 self.run_session(session['id'], lambda stage: update(currentStage=stage))
                 self.update_batch_summary(batch_id)
             self.update_batch_summary(batch_id, final=True)
+            self.repo.db.flow_batches.update_one({'id': batch_id}, {'$unset': {'activeKey': ''}})
         except Exception as exc:
             self.update_batch_summary(batch_id)
             update(status='failed', error=self.error_message(exc), completedAt=now())
+            self.repo.db.flow_batches.update_one({'id': batch_id}, {'$unset': {'activeKey': ''}})
 
     def update_batch_summary(self, batch_id, final=False):
         batch = self.repo.db.flow_batches.find_one({'id': batch_id})

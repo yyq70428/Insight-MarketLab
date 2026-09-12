@@ -48,9 +48,7 @@ async def lifespan(_: FastAPI):
     except Exception:
         pass
     try:
-        if repository.available():
-            repository.ensure_indexes()
-            repository.interrupt_stale_work()
+        repository.initialize()
     except Exception:
         pass
     scanner.start()

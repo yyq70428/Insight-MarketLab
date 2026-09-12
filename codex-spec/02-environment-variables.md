@@ -18,7 +18,7 @@
 | 新聞 | NEWS_MAX_PAGES_PER_ROUND 為 10；NEWS_MAX_ARTICLES 為 8；NEWS_TIMEOUT 為 8 秒 |
 | 模型 | OPENAI_API_KEY 預設空；OPENAI_BASE_URL 指向 Responses 相容介面；OPENAI_MODEL 為 gpt-5.6-luna；OPENAI_TIMEOUT 為 90 秒 |
 | 舊版報告 | AGENT_REPORT_TTL 為 3600 秒 |
-| MongoDB | MONGODB_URI 預設空；MONGODB_DATABASE 為 marketlab |
+| MongoDB | MONGODB_URI 必填並由 Compose 原樣注入；MONGODB_DATABASE 預設為 marketlab。本機 Mongo 僅在 `local-mongo` profile 啟用 |
 | PostgreSQL | DATABASE_URL 預設空；容器環境另提供主機、使用者、密碼與資料庫名 |
 | 新聞評審 | RAGAS_ENABLED 為 false；模型、基底與金鑰預設沿用主模型；RAGAS_TIMEOUT 為 120 秒 |
 | 掃描 | SCAN_INTERVAL 為 900 秒；SCAN_CANDLE_INTERVAL 為日線；SCAN_FETCH_DELAY 為 0.4 秒 |
