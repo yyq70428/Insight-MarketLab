@@ -1,7 +1,5 @@
 # MarketLab
 
-MarketLab 是依 `codex-spec` 實作的深色金融分析、Agent 決策、紙上驗證與量化研究工作台。
-
 ## 快速開始
 
 ```bash
@@ -29,6 +27,8 @@ docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
 
 開啟 [工作台](http://127.0.0.1:9021/) 或 [Agent 後台](http://127.0.0.1:9021/dashboard)。Compose 已固定名稱 `insight-marketlab`，避免其他同名 `deploy` 專案互相替換容器。
 
+Agent 後台的「區間回測」頁可同時查看多個標的／日期區間。按「＋ 新增回測列」建立可編輯列，設定標的、開始日、結束日、最長持有與 HOLD 門檻後執行。每列依實際交易日產生橫向節點；點擊已建立 Session 的節點，可查看第一層技術／新聞、第二層決策、第三層自適應摘要，以及完整參數、主報告、影子報告、版本與稽核事件。
+
 本機以 `MARKETLAB_EXISTING_VOLUMES=true` 及兩個 `MARKETLAB_*_VOLUME` 設定保留舊資料卷。新安裝不需設定這三項。不要執行 `down -v`，也不要讓兩個資料庫容器同時掛載同一份資料卷。
 
 ## Flow 與區間回測
@@ -37,6 +37,8 @@ docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
 2. 區間回測上一輪完成後才建立下一輪，第二輪起使用當時生效版本。
 3. 「等待驗證資料」表示完整 K 線不足，不是未開發。「更新後續行情與驗證」不會重算決策。
 4. 重載可恢復批次／Session；重建容器保留資料，但進行中的工作會標記中斷，需另建新工作。
+
+首頁將技術與新聞固定為左右並行的「第一層」，決策與紙上驗證為「第二層 · 執行 Agent」，審核與候選版本為「第三層 · 自適應 Agent」。批次逐交易日執行時，左側 K 線會跟隨目前 Session 的錨點；決策凍結後顯示動作、信心、目標與停損，驗證完成後加入進出場標記及實際淨損益，再切到下一個交易日。報告與圖表都綁定同一 Session，分析指標不讀取錨點之後資料；只有紙上驗證回放可顯示後續 K 線。
 
 模型使用 OpenAI Responses API 的 [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)，另驗證引用、範圍與報告身分；模型失敗不改用技術分數冒充決策。
 

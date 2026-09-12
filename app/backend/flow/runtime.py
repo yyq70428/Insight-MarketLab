@@ -265,8 +265,12 @@ class FlowRuntime:
         rounds = []
         for session_id in batch['sessionIds']:
             s = self.repo.db.sessions.find_one({'id': session_id})
+            execution = self.repo.db.execution_runs.find_one({'sessionId': session_id, 'role': 'champion'}, {'report': 1}) or {}
+            execution_report = execution.get('report') or {}
             rounds.append({'sessionId': session_id, 'anchor': s['anchor'], 'status': s['status'],
+                'anchorTime': s.get('candleSnapshot', [{}])[-1].get('time') if s.get('candleSnapshot') else None,
                 'action': s.get('decision', {}).get('action'), 'confidence': s.get('decision', {}).get('confidence'),
+                'target': execution_report.get('target'), 'stop': execution_report.get('stop'),
                 'modelUsed': s.get('decision', {}).get('modelUsed'), 'evidenceSufficient': s.get('newsEvidenceSufficient', False),
                 'validation': s.get('outcome', {}), 'completed': s['status'] == 'completed'})
         completed = sum(r['completed'] for r in rounds)

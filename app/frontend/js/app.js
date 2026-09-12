@@ -1,10 +1,11 @@
-import {query,request} from "./api.js";import {drawLine} from "./chart.js";import {drawPrice,drawReplayMarkers} from "./price-chart.js?v=4";import {analysisSummary} from "./overlays.js";import {assertAnchor} from "./anchor-guard.js";import {money,compact,showToast,debounce,escapeHtml} from "./util.js";
-import {initPipeline} from './agent-pipeline.js?v=4';
+import {query,request} from "./api.js";import {drawLine} from "./chart.js";import {drawPrice,drawReplayMarkers} from "./price-chart.js?v=5";import {analysisSummary} from "./overlays.js";import {assertAnchor} from "./anchor-guard.js";import {money,compact,showToast,debounce,escapeHtml} from "./util.js";
+import {initPipeline} from './agent-pipeline.js?v=5';
 import {replayRows} from './replay-data.js';
+import {executionOverlay,outcomeLabel} from './execution-overlay.js?v=1';
 const state={symbol:localStorage.getItem("marketlab.symbol")||"0050.TW",interval:"1d",range:"5y",anchor:"",rows:[],analysis:null,toggles:{harmonics:true,zones:true,zigzag:false,rsi:true,macd:true},searchIndex:0};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 async function load(){
- const version=Symbol();state.loadVersion=version;clearTimeout(state.replayTimer);state.replaying=false;state.loading=true;state.anchorRows=[];
+ const version=Symbol();state.loadVersion=version;clearTimeout(state.replayTimer);state.replaying=false;state.loading=true;state.anchorRows=[];state.executionView=null;$('#batchTradeOverlay').classList.add('hidden');
  pipeline.contextChanged();$('#chartLoading').classList.remove('hidden');$('#chartLoading').textContent='正在載入行情與分析…';
  try{
   const params={symbol:state.symbol,interval:state.interval,range:state.range,anchor:state.anchor};
@@ -22,7 +23,19 @@ async function load(){
   render();state.loading=false;state.dataKey=`${state.symbol}:${state.interval}:${state.anchor}`;pipeline.contextChanged();$('#chartLoading').classList.add('hidden');
  }catch(error){if(state.loadVersion!==version)return;state.loading=false;state.dataKey=null;pipeline.contextChanged();$('#chartLoading').textContent=error.message;$('#dataStatus').textContent='資料連線失敗';showToast(error.message)}
 }
-function render(){drawPrice($("#priceChart"),state.rows,state.analysis,state.toggles);drawLine($("#rsiChart"),state.analysis?.indicators,"rsi","#b39bd9",[0,100]);drawLine($("#macdChart"),state.analysis?.indicators,"macd","#3474ff")}
+function render(){drawPrice($("#priceChart"),state.rows,state.analysis,state.toggles,state.executionView);drawLine($("#rsiChart"),state.analysis?.indicators,"rsi","#b39bd9",[0,100]);drawLine($("#macdChart"),state.analysis?.indicators,"macd","#3474ff")}
+function syncExecution(session,batch){
+ if(state.loading||state.dataKey!==`${session.symbol}:${session.interval}:${session.anchor}`)return;
+ const view=executionOverlay(session,batch,state.anchorRows.at(-1)?.time),host=$('#batchTradeOverlay');state.executionView=view;
+ state.rows=view?.replay?.length?replayRows(state.anchorRows,view.replay,view.replay.length):state.anchorRows;
+ if(!view){host.classList.add('hidden');render();return}
+ const action={BUY:'買進',SELL:'賣出',HOLD:'觀望'}[view.action]||view.action;
+ const result=outcomeLabel(view),signed=view.validation?.netReturnPct;
+ const round=view.round?`第 ${view.round}/${view.totalRounds} 輪 · `:'';
+ host.innerHTML=`<strong>${round}${escapeHtml(view.anchor)} · ${escapeHtml(action)}</strong>　信心 ${money(view.confidence)}%<br>${view.action==='HOLD'?'觀望，不設交易目標':`目標 ${money(view.target)}　停損 ${money(view.stop)}`}<small class="${signed>0?'trade-positive':signed<0?'trade-negative':''}">${escapeHtml(result)}</small>`;
+ host.classList.remove('hidden');render();
+ $('#dataStatus').textContent=`${view.batchId?'區間回測':'紙上驗證'} ${view.anchor} · ${result} · 分析僅使用錨點當日及以前資料`;
+}
 async function selectSession(session){state.symbol=session.symbol;state.interval=session.interval;state.anchor=session.anchor;$('#anchorDate').value=session.anchor;$$('[data-interval]').forEach(b=>b.classList.toggle('active',b.dataset.interval===session.interval));await load()}
 function replay(report){
  if(!report.decision?.frozenAt||!report.replay?.length)return;
@@ -39,6 +52,6 @@ $("#anchorDate").onchange=e=>{state.anchor=e.target.value;load()};$("#clearAncho
 const dialog=$("#searchDialog"),input=$("#searchInput"),results=$("#searchResults");function openSearch(){dialog.showModal();input.value="";results.innerHTML="<p>輸入關鍵字搜尋美股、台股與加密資產</p>";setTimeout(()=>input.focus(),10)}$("#openSearch").onclick=openSearch;document.addEventListener("keydown",e=>{if(e.key==="/"&&!dialog.open){e.preventDefault();openSearch()}if(dialog.open&&["ArrowDown","ArrowUp"].includes(e.key)){e.preventDefault();const rows=$$(".search-result");if(!rows.length)return;state.searchIndex=(state.searchIndex+(e.key==="ArrowDown"?1:-1)+rows.length)%rows.length;rows.forEach((r,i)=>r.classList.toggle("active",i===state.searchIndex))}if(dialog.open&&e.key==="Enter"){const row=$$(".search-result")[state.searchIndex];if(row){e.preventDefault();row.click()}}});
 input.oninput=debounce(async()=>{if(!input.value.trim())return;results.innerHTML="<p>搜尋中…</p>";try{const data=await query("/api/search",{q:input.value.trim()});state.searchIndex=0;results.innerHTML=data.results.length?data.results.map((r,i)=>`<button type="button" class="search-result ${i===0?"active":""}" data-symbol="${escapeHtml(r.symbol)}"><strong>${escapeHtml(r.symbol)}<br><span>${escapeHtml(r.name)}</span></strong><span>${escapeHtml(r.exchange)} · ${escapeHtml(r.type)}</span></button>`).join(""):"<p>找不到可交易標的</p>";$$('.search-result').forEach(row=>row.onclick=()=>{state.symbol=row.dataset.symbol;localStorage.setItem("marketlab.symbol",state.symbol);dialog.close();load()})}catch(e){results.innerHTML=`<p>${escapeHtml(e.message)}</p>`}},300);
 $$('.weights input').forEach(input=>input.oninput=()=>input.parentElement.querySelector("output").textContent=`${Number(input.value).toFixed(1)}%`);$("#executionWeight").oninput=e=>e.target.parentElement.querySelector("output").textContent=`技術 ${e.target.value}% / 新聞 ${100-e.target.value}%`;$("#confidence").oninput=e=>e.target.parentElement.querySelector("output").textContent=`${e.target.value}%`;
-const pipeline=initPipeline({getContext:()=>({symbol:state.symbol,interval:state.interval,anchor:state.anchor,chartReady:!state.loading&&state.dataKey===`${state.symbol}:${state.interval}:${state.anchor}`}),selectSession,replay});
+const pipeline=initPipeline({getContext:()=>({symbol:state.symbol,interval:state.interval,anchor:state.anchor,chartReady:!state.loading&&state.dataKey===`${state.symbol}:${state.interval}:${state.anchor}`}),selectSession,replay,syncSession:syncExecution});
 async function loadWatchlist(){try{const data=await request("/api/watchlist");localStorage.setItem("marketlab.watchlist",JSON.stringify(data.items.map(x=>x.symbol)));renderWatch(data.items.map(x=>x.symbol))}catch{renderWatch(JSON.parse(localStorage.getItem("marketlab.watchlist")||"[]"))}}function renderWatch(items){$("#watchlistItems").innerHTML=items.length?items.map(s=>`<button class="analysis-chip watch-symbol" data-symbol="${s}">${s}</button>`).join(""):"尚無自選標的";$$('.watch-symbol').forEach(b=>b.onclick=()=>{state.symbol=b.dataset.symbol;load()})}$("#addWatchlist").onclick=async()=>{try{await request("/api/watchlist",{method:"POST",body:JSON.stringify({symbol:state.symbol})})}catch{const list=JSON.parse(localStorage.getItem("marketlab.watchlist")||"[]");if(!list.includes(state.symbol))list.push(state.symbol);localStorage.setItem("marketlab.watchlist",JSON.stringify(list))}loadWatchlist()};
 $("#toggleSidebar").onclick=()=>$("#agentSidebar").classList.toggle("open");document.querySelector(".topbar").onclick=e=>{if(innerWidth<=900&&e.target===e.currentTarget)$("#agentSidebar").classList.toggle("open")};addEventListener("resize",debounce(render,100));$("#clearDrawings").onclick=()=>showToast("手動畫線已清除");loadWatchlist();load().then(()=>pipeline.restore());

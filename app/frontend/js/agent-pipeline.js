@@ -4,11 +4,12 @@ import {technicalReportHTML} from './technical-report.js';
 
 const $ = selector => document.querySelector(selector);
 const post = (url, body = {}) => request(url, {method: 'POST', body: JSON.stringify(body)});
-const stageNames = {first_layer:'技術／新聞分析',creating_session:'建立輪次',technical:'技術分析',news:'新聞分析',execution:'決策與驗證',adaptive:'自適應審核',waiting_data:'等待後續行情',completed:'完成'};
+const stageNames = {first_layer:'第一層 · 技術／新聞平行分析',creating_session:'建立輪次',technical:'第一層 · 技術分析',news:'第一層 · 新聞分析',execution:'第二層 · 執行與紙上驗證',adaptive:'第三層 · 自適應審核',waiting_data:'等待後續行情',completed:'完成'};
 const statusIds = {technical:'#techStatus',news:'#newsStatus',execution:'#executionStatus',adaptive:'#adaptiveStatus'};
 
-export function initPipeline({getContext, selectSession, replay}) {
+export function initPipeline({getContext, selectSession, replay, syncSession}) {
   let current = null, batch = null, sessionTimer, batchTimer, creating, busy = false, creatingKey;
+  let renderedBatchRounds = 0, batchPreviewUntil = 0;
   let rendered = new Map();
   const key = value => `${value.symbol}:${value.interval}:${value.anchor}`;
   const error = err => showToast(err.message);
@@ -84,6 +85,7 @@ export function initPipeline({getContext, selectSession, replay}) {
     $('#playValidation').classList.toggle('hidden',!(s.runs.execution?.find(r=>r.role==='champion')?.report?.replay?.length));
     $('#playValidation').disabled=!getContext().chartReady;
     $('#restoreAnchor').classList.toggle('hidden',!s.decision);
+    syncSession?.(s,batch);
   }
 
   async function pollSession(id) {
@@ -128,7 +130,13 @@ export function initPipeline({getContext, selectSession, replay}) {
       {queued:'排隊中',running:'執行中',completed:'完成',waiting_validation:'等待驗證資料',failed:'失敗',interrupted:'執行已中斷'}[row.status]);
     $('#batchSummary').textContent=`${row.symbol} · 分析完成 ${row.completedRounds}/${row.totalRounds} 輪 · ${row.currentAnchor||''} ${stageNames[row.currentStage]||row.currentStage}。
       已驗證 ${row.validatedRounds||0} 輪，成功 ${row.successCount||0} 輪（${row.successRate==null?'尚無完整樣本':row.successRate+'%'}），等待行情 ${row.pendingValidation||0} 輪。${row.error||''}`;
-    $('#batchRounds').innerHTML=(row.rounds||[]).map(r=>`<button type="button" class="batch-round" data-session="${esc(r.sessionId)}"><span>${esc(r.anchor)} · ${esc(r.action||'—')} · ${money(r.confidence)}%</span><span>${r.validation?.complete?`${r.validation.success?'成功':'未成功'} · ${money(r.validation.netReturnPct)}%`:r.completed?'等待後續 K 線':'分析中'}</span></button>`).join('');
+    $('#batchRounds').innerHTML=(row.rounds||[]).map(r=>{
+      const net=r.validation?.netReturnPct;
+      const result=!r.validation?.complete?(r.completed?'等待後續 K 線':'分析中'):
+        r.action==='HOLD'?`${r.validation.success?'預測成功':'預測未成功'} · 0.00%`:
+        `${net>0?'獲利':net<0?'虧損':'損益兩平'} · ${net>0?'+':''}${money(net)}%`;
+      return `<button type="button" class="batch-round" data-session="${esc(r.sessionId)}"><span>${esc(r.anchor)} · ${esc(r.action||'—')} · ${money(r.confidence)}%</span><span>${result}</span></button>`;
+    }).join('');
     $('#refreshBatch').classList.toggle('hidden',row.status!=='waiting_validation');
     document.querySelectorAll('.batch-round').forEach(button=>button.onclick=()=>adoptSession(button.dataset.session));
   }
@@ -142,6 +150,15 @@ export function initPipeline({getContext, selectSession, replay}) {
     clearTimeout(batchTimer);
     try {
       const row=await request(`/api/flow/batches/${id}`);renderBatch(row);
+      const completed=(row.rounds||[]).filter(round=>round.completed);
+      if(completed.length>renderedBatchRounds){
+        renderedBatchRounds=completed.length;batchPreviewUntil=Date.now()+1800;
+        await adoptSession(completed.at(-1).sessionId);
+      }
+      if(Date.now()<batchPreviewUntil){
+        if(['queued','running'].includes(row.status))batchTimer=setTimeout(()=>pollBatch(id),500);
+        return;
+      }
       if(row.currentSessionId&&current?.id!==row.currentSessionId)await adoptSession(row.currentSessionId);
       else if(row.currentSessionId){const s=await request(`/api/flow/sessions/${row.currentSessionId}`);renderSession(s)}
       if(['queued','running'].includes(row.status))batchTimer=setTimeout(()=>pollBatch(id),1400);
@@ -155,7 +172,7 @@ export function initPipeline({getContext, selectSession, replay}) {
       const startDate=$('#batchStart').value,endDate=$('#batchEnd').value;
       if(endDate<startDate)throw new Error('結束日期不可早於開始日期');
       const row=await post('/api/flow/batches',{symbol:getContext().symbol,symbolName:$('#newsName').value,startDate,endDate,maxHoldingDays:Number($('#maxHold').value),holdThresholdPct:Number($('#holdThreshold').value),params:params()});
-      localStorage.setItem('marketlab.lastBatch',row.id);renderBatch(row);pollBatch(row.id);
+      renderedBatchRounds=0;batchPreviewUntil=0;localStorage.setItem('marketlab.lastBatch',row.id);renderBatch(row);pollBatch(row.id);
     }catch(err){error(err);$('#runBatch').disabled=false}
   };
   $('#refreshBatch').onclick=async()=>{
@@ -196,7 +213,7 @@ export function initPipeline({getContext, selectSession, replay}) {
         $('#maxHold').value=saved.execution.maxHoldingBars;$('#holdThreshold').value=saved.execution.holdThresholdPct;
       }
       const batchId=localStorage.getItem('marketlab.lastBatch');
-      if(batchId){const row=await request(`/api/flow/batches/${batchId}`);$('#batchStart').value=row.startDate;$('#batchEnd').value=row.endDate;$('#maxHold').value=row.maxHoldingDays;$('#holdThreshold').value=row.holdThresholdPct;renderBatch(row);await pollBatch(batchId)}
+      if(batchId){const row=await request(`/api/flow/batches/${batchId}`);renderedBatchRounds=(row.rounds||[]).filter(round=>round.completed).length;$('#batchStart').value=row.startDate;$('#batchEnd').value=row.endDate;$('#maxHold').value=row.maxHoldingDays;$('#holdThreshold').value=row.holdThresholdPct;renderBatch(row);await pollBatch(batchId)}
       else {const sessionId=localStorage.getItem('marketlab.lastSession');if(sessionId){await adoptSession(sessionId);pollSession(sessionId)}}
     }catch(err){error(err)}
   }

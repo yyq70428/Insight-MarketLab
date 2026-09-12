@@ -24,6 +24,7 @@
       <section class="chart-panel main-chart-panel">
         <div class="chart-legend"><h1><span id="chartSymbol">0050.TW</span> <small id="companyName">— · 1d</small></h1><div id="ohlcLine">開 —　高 —　低 —　收 —　量 —</div></div>
         <div id="priceChart" class="chart-host" aria-label="K 線與成交量圖"></div><div id="chartLoading" class="loading-state">正在載入行情…</div>
+        <div id="batchTradeOverlay" class="batch-trade-overlay hidden" aria-live="polite"></div>
         <span id="zoneHistoryNote" class="zone-history-note" hidden>淡框：歷史區間（回看整理）· 類型依視窗末價</span>
       </section>
       <section class="indicator-panel" id="rsiPanel"><header>RSI (14) <span id="rsiValue">—</span><button data-close="rsi">×</button></header><canvas id="rsiChart"></canvas></section>
@@ -43,9 +44,9 @@
           <article class="agent-card"><header><h3>新聞面 Agent</h3><span class="status waiting" id="newsStatus">待命</span></header><p class="anchor-warning">先選擇錨定日期</p><div class="news-fields"><label>回看天數<input type="number" value="30" min="7" max="90"></label><label>搜尋輪數<select><option>3 輪</option><option>4 輪</option><option>5 輪</option></select></label><label class="wide">標的名稱（自動帶入，可補充）<input id="newsName" placeholder="標的名稱"></label></div><button class="adaptive-outline full" id="runNews">擷取新聞並判斷</button><div class="report" id="newsReport" aria-live="polite">標的或週期已變更，請重新擷取新聞</div></article>
         </div>
         <div class="pipeline-divider">技術 + 新聞 <span>↓</span> LLM 決策 <span>↓</span> 紙上驗證</div>
-        <article class="execution-card"><header><h3>執行 Agent</h3><span class="status waiting" id="executionStatus">等待第一層</span></header><label>技術 / 新聞權重 <output>技術 50% / 新聞 50%</output><input type="range" min="0" max="100" value="50" id="executionWeight"></label><label>最低 LLM 執行信心 <output>52%</output><input type="range" min="0" max="100" value="52" id="confidence"></label><button class="disabled-action full" id="runExecution" disabled>等待兩份報告完成</button><div class="report" id="executionReport">圖表顯示錨定資料；決策完成後才讀取未來 K 線。</div></article>
+        <article class="execution-card"><header><h3>第二層 · 執行 Agent</h3><span class="status waiting" id="executionStatus">等待第一層</span></header><label>技術 / 新聞權重 <output>技術 50% / 新聞 50%</output><input type="range" min="0" max="100" value="50" id="executionWeight"></label><label>最低 LLM 執行信心 <output>52%</output><input type="range" min="0" max="100" value="52" id="confidence"></label><button class="disabled-action full" id="runExecution" disabled>等待兩份報告完成</button><div class="report" id="executionReport">圖表顯示錨定資料；決策完成後才讀取未來 K 線。</div></article>
         <div class="button-row replay-actions"><button type="button" class="secondary hidden" id="refreshValidation">更新驗證</button><button type="button" class="secondary hidden" id="playValidation">播放驗證 K 線</button><button type="button" class="secondary hidden" id="restoreAnchor">回到錨點</button></div>
-        <article class="execution-card"><header><h3>自適應 Agent</h3><span class="status waiting" id="adaptiveStatus">待命</span></header><div class="report" id="adaptiveReport" aria-live="polite">等待決策與驗證</div></article>
+        <article class="execution-card"><header><h3>第三層 · 自適應 Agent</h3><span class="status waiting" id="adaptiveStatus">待命</span></header><div class="report" id="adaptiveReport" aria-live="polite">等待決策與驗證</div></article>
       </section>
       <section class="side-section compact-list"><header><h2>自選清單</h2><button id="addWatchlist">＋ 加入目前標的</button></header><div id="watchlistItems">尚無自選標的</div></section>
       <section class="side-section compact-list"><header><h2>分析摘要</h2></header><div id="analysisCards">載入分析中…</div></section>
@@ -53,5 +54,5 @@
   </main>
   <dialog id="searchDialog"><form method="dialog" class="search-modal"><header><h2>搜尋標的</h2><button value="cancel" aria-label="關閉">×</button></header><input id="searchInput" autocomplete="off" placeholder="輸入代號或公司名稱"><div id="searchResults" role="listbox"><p>輸入關鍵字搜尋美股、台股與加密資產</p></div></form></dialog>
   <div class="toast" id="toast" role="status"></div>
-  <script src="/static/js/vendor/lightweight-charts.standalone.js"></script><script type="module" src="/static/js/app.js?v=4"></script><script>document.querySelector('#mobileSidebar').addEventListener('click',()=>document.querySelector('#agentSidebar').classList.toggle('open'))</script>
+  <script src="/static/js/vendor/lightweight-charts.standalone.js"></script><script type="module" src="/static/js/app.js?v=6"></script><script>document.querySelector('#mobileSidebar').addEventListener('click',()=>document.querySelector('#agentSidebar').classList.toggle('open'))</script>
 </body></html>

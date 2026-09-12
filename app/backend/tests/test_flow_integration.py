@@ -103,6 +103,9 @@ def test_batch_is_sequential_and_only_first_round_keeps_technical_override(flow)
     assert b['params']['technical']['rsiMode'] == 'mean_reversion'
     assert b['params']['execution']['minConfidence'] == 52
     assert b['params']['execution']['maxHoldingBars'] == 3
+    batch = rt.repo.db.flow_batches.find_one({'id':batch['id']})
+    assert all(round_['anchorTime'] for round_ in batch['rounds'])
+    assert all(round_['target'] == 110 and round_['stop'] == 90 for round_ in batch['rounds'])
 
 
 def test_batch_94_calendar_day_limit_is_inclusive(flow, monkeypatch):

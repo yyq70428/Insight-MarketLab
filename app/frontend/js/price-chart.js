@@ -90,7 +90,31 @@ function drawPattern(instance, rows, pattern) {
     [{time:d.time,value:target},{time:end,value:target}], {color:rgba(color,index ? .42 : .65),width:1,style:2,label:`T${index+1}`}));
 }
 
-export function drawPrice(host, rows, analysis = {}, flags = {}) {
+function drawExecution(instance, rows, view) {
+  if (!view || !rows.length) return;
+  const anchorIndex=rows.findIndex(row=>row.time===view.anchorTime);
+  const anchor=anchorIndex>=0?rows[anchorIndex]:rows.findLast(row=>row.time<=view.anchorTime);
+  if (!anchor) return;
+  const step=rows.length>1?Math.max(1,rows.at(-1).time-rows.at(-2).time):86400;
+  const lastTime=Math.max(rows.at(-1).time,anchor.time+step*Math.max(3,view.validation?.bars||3));
+  const action={BUY:'買進',SELL:'賣出',HOLD:'觀望'}[view.action]||view.action;
+  if (view.action!=='HOLD') {
+    line(instance,[{time:anchor.time,value:view.target},{time:lastTime,value:view.target}],{color:COLORS.bullish,width:1,style:2,label:`目標 ${view.target.toLocaleString('zh-TW')}`});
+    line(instance,[{time:anchor.time,value:view.stop},{time:lastTime,value:view.stop}],{color:COLORS.bearish,width:1,style:2,label:`停損 ${view.stop.toLocaleString('zh-TW')}`});
+  }
+  const markers=[{time:anchor.time,position:view.action==='SELL'?'aboveBar':'belowBar',color:'#4388ff',
+    shape:view.action==='SELL'?'arrowDown':view.action==='BUY'?'arrowUp':'circle',text:`${view.anchor} ${action}決策`}];
+  const validation=view.validation;
+  if (validation?.entryTime && validation.entryTime<=rows.at(-1).time) markers.push({time:validation.entryTime,
+    position:view.action==='SELL'?'aboveBar':'belowBar',color:'#79a5ff',shape:'circle',text:`進場 ${validation.entry?.toLocaleString('zh-TW')}`});
+  if (validation?.complete&&validation.exitTime<=rows.at(-1).time) markers.push({time:validation.exitTime,
+    position:view.action==='SELL'?'belowBar':'aboveBar',color:validation.netReturnPct>0?COLORS.bullish:COLORS.bearish,
+    shape:view.action==='SELL'?'arrowUp':'arrowDown',text:`${validation.netReturnPct>0?'+':''}${validation.netReturnPct.toFixed(2)}% · ${validation.exitReason||validation.reason}`});
+  markers.sort((a,b)=>a.time-b.time);
+  instance.candles.setMarkers(markers);
+}
+
+export function drawPrice(host, rows, analysis = {}, flags = {}, execution = null) {
   if (!rows?.length) return;
   if (rows.some((row,i)=>!Number.isFinite(row.time)||(i>0&&row.time<=rows[i-1].time)))
     throw new Error('圖表行情時間必須遞增且不可重複');
@@ -113,6 +137,7 @@ export function drawPrice(host, rows, analysis = {}, flags = {}) {
   if (historyNote) historyNote.hidden = !(flags.zones && analysis.historicalZones?.length);
   if (flags.harmonics) analysis.harmonics?.filter(pattern => pattern.points.at(-1).time >= visibleStart).slice(0,3)
     .forEach(pattern => drawPattern(instance, rows, pattern));
+  drawExecution(instance,rows,execution);
   // Preserve the user's zoom when switching overlays or resizing the sidebar.
   instance.chart.timeScale().setVisibleRange(visibleRange || {from: visibleStart, to: rows.at(-1).time});
   instance.rows = rows;

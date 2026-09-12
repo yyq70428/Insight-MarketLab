@@ -287,10 +287,16 @@
 .workbench .flow-section > header { flex-wrap: wrap; gap: 10px; }
 .workbench .flow-section > header > .button-row { margin-left: auto; }
 @container agents (max-width: 440px) {
-  .first-layer { grid-template-columns: minmax(0, 1fr); }
-  .agent-card + article { border-left: 0; border-top: 1px solid var(--line); }
   .flow-section > header > .button-row { width: 100%; }
   .flow-section > header > .button-row > button { flex: 1; }
+  .first-layer .agent-card { padding-inline: 9px; }
+  .first-layer .weights { gap: 7px 6px; }
+  .first-layer .button-row { gap: 5px; }
+  .first-layer .technical-result { font-size: 11px; }
+  .first-layer .technical-odds { gap: 5px; }
+  .first-layer .technical-odds > div { padding: 7px 6px; }
+  .first-layer .technical-odds strong { font-size: 19px; }
+  .first-layer .technical-prices { gap: 4px 6px; }
 }
 
 .batch-progress { margin-top: 12px; line-height: 1.6; }

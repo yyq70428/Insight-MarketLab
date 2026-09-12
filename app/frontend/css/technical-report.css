@@ -1,8 +1,4 @@
-/* Keep the narrow rail; stack agents so complete reports remain readable. */
-@container agents (max-width: 640px) {
-  .first-layer { grid-template-columns: minmax(0, 1fr); }
-  .agent-card + article { border-left: 0; border-top: 1px solid var(--line); }
-}
+/* The first layer remains a true left/right parallel pair on desktop. */
 .technical-result { font-size: 13px; line-height: 1.65; min-width: 0; }
 .technical-odds { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 3px; }
 .technical-odds > div { border: 1px solid #2d3340; background: #1b202c; border-radius: 5px; padding: 9px 10px; }
