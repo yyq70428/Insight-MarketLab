@@ -54,6 +54,23 @@ class Settings(BaseModel):
     alert_universe: bool = True
     alert_near_pct: float = 0
     flow_max_rounds: int = 20
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_starttls: bool = True
+    smtp_timeout: float = 20
+    report_recipients: str = ""
+    daily_report_enabled: bool = False
+    daily_report_time: str = "18:00"
+    daily_report_timezone: str = "Asia/Taipei"
+    # A restart after the scheduled time must not trigger a surprise full run; the job only
+    # fires inside this window, so short downtime is tolerated but yesterday's slot is not.
+    daily_report_window_minutes: int = 120
+    daily_report_weekdays_only: bool = True
+    daily_report_delay: float = 1.5
+    daily_report_candle_period: str = "2y"
     yahoo_search_url: str = "https://query2.finance.yahoo.com/v1/finance/search"
     anue_news_url: str = "https://news.cnyes.com/api/v3/news/category"
     anue_archive_url: str = "https://news.cnyes.com/news/cat"
@@ -65,6 +82,14 @@ class Settings(BaseModel):
     @property
     def cors_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def recipient_list(self) -> list[str]:
+        return [item.strip() for item in self.report_recipients.replace(";", ",").split(",") if item.strip()]
+
+    @property
+    def sender_address(self) -> str:
+        return self.smtp_from or self.smtp_user
 
 
 @lru_cache

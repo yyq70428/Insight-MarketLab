@@ -29,6 +29,8 @@ from .services import market_data
 from .services.quant import backtest, market_for
 from .services.scanner import scanner
 from .services.alerts import alerts
+from .services.daily_report import daily_report
+from .data.universe import UNIVERSE, SYMBOLS
 from .services.store import watchlist_store
 from .services.agent_reports import legacy_reports
 from .analysis.news_agent import insufficient_news_report
@@ -53,8 +55,10 @@ async def lifespan(_: FastAPI):
         pass
     scanner.start()
     alerts.start()
+    daily_report.start()
     yield
     alerts.stop_event.set()
+    daily_report.stop_event.set()
 
 
 app = FastAPI(title="MarketLab", version="1.0.0", lifespan=lifespan)
@@ -228,6 +232,45 @@ app.include_router(flow_router)
 
 class WatchlistItem(BaseModel):
     symbol: str
+
+
+@app.get("/api/daily-report/universe")
+def daily_report_universe():
+    return {"total": len(SYMBOLS),
+            "symbols": [{"symbol": s, "name": n, "sector": c,
+                         "market": "台股" if s.endswith((".TW", ".TWO")) else "美股"} for s, n, c in UNIVERSE]}
+
+
+@app.get("/api/daily-report/status")
+def daily_report_status():
+    from .services.mailer import missing_settings
+    return {**daily_report.status, "enabled": settings.daily_report_enabled,
+            "scheduledAt": settings.daily_report_time, "timezone": settings.daily_report_timezone,
+            "weekdaysOnly": settings.daily_report_weekdays_only,
+            "lastRunDate": daily_report.last_run_date.isoformat() if daily_report.last_run_date else None,
+            "mailMissing": missing_settings()}
+
+
+class DailyReportRequest(BaseModel):
+    symbols: list[str] | None = Field(None, max_length=70)
+    notify: bool = True
+
+
+@app.post("/api/daily-report/run")
+def daily_report_run(body: DailyReportRequest, tasks: BackgroundTasks):
+    """Kick off a run now. `symbols` limits the universe, which is how you smoke-test
+    the mail path without paying for 70 LLM calls."""
+    targets = None
+    if body.symbols:
+        targets = [normalize_symbol(s) for s in body.symbols]
+        unknown = [s for s in targets if s not in SYMBOLS]
+        if unknown:
+            raise HTTPException(422, "不在固定清單內的標的：" + "、".join(unknown))
+    if daily_report.running:
+        raise HTTPException(409, "每日報告正在執行中")
+    tasks.add_task(lambda: daily_report.run(targets, body.notify))
+    return {"started": True, "total": len(targets or SYMBOLS), "notify": body.notify,
+            "hint": "以 GET /api/daily-report/status 追蹤進度"}
 
 
 @app.get("/api/watchlist")

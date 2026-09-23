@@ -89,6 +89,30 @@ docker compose -f deploy/docker-compose.yml --env-file .env exec -T app python -
 
 量化會交叉檢查 FinMind 的大幅價格斷層；如 0050 拆股造成基準不一致，整段改用 Yahoo，顯示來源、實際日期及缺日，不將拆股價差當成持倉虧損。價格報酬未計入股息再投資。
 
+## 每日雙 Agent 郵件報告
+
+固定 70 檔標的寫在 `app/backend/data/universe.py`（台股 60 檔：大型權值 50 + 中小潛力 10；美股 10 檔大型股）。
+這是人工維護的快照，不是 0050 指數的即時成分，換股後需要自行校正。美股只收大型股，因為新聞 Agent 取材鉅亨網，
+中小型美股的中文報導覆蓋不足，每天都會落在「證據不足」。
+
+排程到點後依序對每檔跑技術面 Agent 與新聞面 Agent，組成表格與說明寄出。不產生交易決策 —— 執行 Agent 需要凍結錨點
+與後續 K 線才有意義，當日報告給不出來，所以只並列兩個 Agent 的獨立判讀並標出彼此衝突的標的。
+
+```bash
+# 先用少數標的驗證管線與寄信，不必付整輪的 LLM 費用
+curl -X POST http://127.0.0.1:9021/api/daily-report/run \
+  -H 'Content-Type: application/json' -d '{"symbols":["2330.TW","NVDA"],"notify":false}'
+
+curl http://127.0.0.1:9021/api/daily-report/status     # 進度、上次結果、缺哪些郵件設定
+curl http://127.0.0.1:9021/api/daily-report/universe   # 固定清單
+```
+
+成本與耗時：每檔約 20 秒且含一次 LLM 呼叫（payload 帶最多 8 篇新聞全文），整輪 70 檔約 25 分鐘。
+預設 `DAILY_REPORT_ENABLED=false`，要跑請先確認 API 額度。
+
+排程只在 `DAILY_REPORT_TIME` 起算 `DAILY_REPORT_WINDOW_MINUTES` 分鐘內補跑，重啟時間超過窗口就跳過當天，
+避免半夜重啟觸發整輪。Gmail 寄件請用應用程式密碼而非登入密碼。
+
 ## 測試
 
 ```bash
