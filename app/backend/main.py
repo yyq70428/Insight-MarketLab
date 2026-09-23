@@ -208,7 +208,8 @@ def legacy_execution(body: ExecutionRequest):
     full=safe_upstream(lambda:market_data.candles(identity["symbol"],identity["interval"],"5y",None))["candles"]
     future=[row for row in full if candle_day(identity['symbol'],identity['interval'],row['time']).isoformat()>identity['anchor']]
     target,stop=(technical['report']['downside'],technical['report']['expectedSell']) if decision['action']=='SELL' else (technical['report']['expectedSell'],technical['report']['downside'])
-    validation=paper_validate(decision,future,target,stop,body.maxHoldingBars,body.holdThresholdPct)
+    validation=paper_validate(decision,future,target,stop,body.maxHoldingBars,body.holdThresholdPct,
+                              reference=technical['report'].get('referencePrice'))
     return {"reportId":decision_id,"identity":identity,"decision":decision,"validation":validation}
 
 

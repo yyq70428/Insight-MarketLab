@@ -39,19 +39,31 @@ def technical_report(frame, weights: dict | None = None, params: dict | None = N
     reasons = {}
     latest = result["latestPrice"]
     atr_proxy = float(atr(frame).iloc[-1])
+    def pattern_age(candidate):
+        return int((frame.time > candidate["points"][-1]["time"]).sum())
     patterns = [p for p in result["harmonics"] if p["score"] >= policy["harmonicMinScore"]]
-    pattern = patterns[0] if patterns else None
+    # Freshness is a hard gate, not a discount: a structure price has already walked away from
+    # is not weak evidence, it is no evidence.  Filter before ranking so a fresh pattern is not
+    # hidden behind a stale higher-scoring one.
+    max_age = policy["harmonicMaxAge"]
+    fresh = [p for p in patterns if pattern_age(p) <= max_age]
+    pattern = fresh[0] if fresh else None
+    stale = patterns[0] if patterns and not fresh else None
     harmonic_signal = 0
     if pattern:
-        age = int((frame.time > pattern["points"][-1]["time"]).sum())
+        age = pattern_age(pattern)
         harmonic_signal = pattern["score"] * .5 * math.pow(.5, age / policy["harmonicHalfLife"])
         harmonic_signal *= 1 if pattern["status"] == "completed" else policy["formingDiscount"]
         harmonic_signal *= 1 if pattern["direction"] == "bullish" else -1
     components["harmonics"] = 50 + harmonic_signal
     reasons['harmonics']='未找到符合門檻的型態，中性計分'
+    if stale:
+        reasons['harmonics']=(f'最近型態 {stale["name"]}・距今 {pattern_age(stale)} 根，已超過有效期 {max_age} 根，'
+                              f'不納入計分（中性 50）')
     if pattern:
         reasons['harmonics']=f'{pattern["name"]}・{"看漲" if pattern["direction"]=="bullish" else "看跌"}・型態吻合度 {pattern["score"]:.0f}%'
-        reasons['harmonics']+=f'；{"已完成" if pattern["status"]=="completed" else "形成中"}，距今 {age} 根，已套用新鮮度折減'
+        reasons['harmonics']+=(f'；{"已完成" if pattern["status"]=="completed" else "形成中"}，距今 {age} 根'
+                               f'（有效期 {max_age} 根），已套用新鮮度折減')
     nearest = min(result["zones"], key=lambda z: z["distancePct"], default=None)
     distance_scale = max(policy['srPriceSpacePct'], atr_proxy/latest*100*policy['srAtrSpace']) * policy['srDistanceScale']
     space = 0 if not nearest else (nearest["strength"] / 100 if policy["srMode"] == "strength"
@@ -74,16 +86,20 @@ def technical_report(frame, weights: dict | None = None, params: dict | None = N
     reasons['rsi']=f'RSI({policy["rsiPeriod"]}) {rsi_value:.1f}，{rsi_state}；{"趨勢" if policy["rsiMode"]=="trend" else "均值回歸"}模式'
     bullish = sum(components[key] * weights[key] / total for key in weights)
     direction = "買進" if bullish >= 55 else "賣出" if bullish <= 45 else "觀望"
-    buy=round(max(latest-atr_proxy*.35,latest*.01),4)
-    sell=round(latest+atr_proxy*1.5,4)
-    downside=round(max(latest-atr_proxy,latest*.001),4)
+    buy=round(max(latest-atr_proxy*policy['atrEntryMult'],latest*.01),4)
+    sell=round(latest+atr_proxy*policy['atrUpsideMult'],4)
+    downside=round(max(latest-atr_proxy*policy['atrDownsideMult'],latest*.001),4)
     return {"bullishPct": round(bullish, 1), "bearishPct": round(100-bullish, 1), "recommendation": direction,
             "expectedBuy": buy, "expectedSell": sell, "downside": downside, "targetBars": 5,
+            "atr": round(atr_proxy, 4), "atrMultiples": {"upside": policy['atrUpsideMult'],
+                "downside": policy['atrDownsideMult'], "entry": policy['atrEntryMult']},
             "components": {key: {"score": round(value, 1), "reason": reasons[key]} for key, value in components.items()},
             "referencePrice": latest, "upsidePct": round((sell/buy-1)*100,3),
             "downsidePct": round((downside/buy-1)*100,3),'returnBasis':'expected_buy',
             "expectedTime": expected_time(int(frame.iloc[-1].time),5,symbol,interval,anchor),
             'macdContext':macd_detail,'engineVersion':'technical-2.1-position-aware',
-            'priceBasis':'買入／賣出／下檔參考價依錨點收盤價與 ATR 推估；漲跌幅以預期買入價計算，未扣成本。',
+            'priceBasis':f'買入／賣出／下檔參考價依錨點收盤價 {latest} 與 ATR {atr_proxy:.4f} 推估'
+                         f'（上檔 ×{policy["atrUpsideMult"]}、下檔 ×{policy["atrDownsideMult"]}、買點 ×{policy["atrEntryMult"]}）；'
+                         '漲跌幅以預期買入價計算，未扣成本。執行 Agent 會依實際進場價平移這些價位。',
             'disclaimer':'方向比例是規則加權分數，不是上漲機率或勝率。所有指標與判斷只使用時間錨定點當日及以前的 K 線資料。',
             "analysis": result, "input": {"candleCount": len(frame), "lastTime": int(frame.iloc[-1].time), "weights": weights, "params": policy}}

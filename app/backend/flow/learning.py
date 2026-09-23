@@ -88,7 +88,8 @@ def prepare_shadows(runtime, session, technical, news):
             decision = execution_decision(tech, article, params['execution'])
             decision['frozenAt'] = now().isoformat()
             repo.db.execution_runs.update_one({'sessionId': session['id'], 'role': role}, {'$set': {
-                'candidateVersionId': candidate['id'], 'decision': decision, 'technical': {k: tech[k] for k in ('expectedSell','downside')},
+                'candidateVersionId': candidate['id'], 'decision': decision,
+                'technical': {k: tech[k] for k in ('expectedSell','downside','referencePrice')},
                 'strategyVersionId': candidate['id']}})
             repo.event(session, agent, 'shadow_decision_frozen', versionId=candidate['id'])
         except Exception as exc:
@@ -103,7 +104,10 @@ def validate_shadows(runtime, session, future, champion):
     repo = runtime.repo
     for run in repo.db.execution_runs.find({'sessionId': session['id'], 'role': {'$regex': '^shadow:'}, 'decision.frozen': True}):
         target, stop = runtime.targets(run['decision'], run['technical'])
-        outcome = paper_validate(run['decision'], future, target, stop, run['params']['maxHoldingBars'], run['params']['holdThresholdPct'])
+        # Paired comparison: the champion's basis must also govern every shadow.
+        outcome = paper_validate(run['decision'], future, target, stop, run['params']['maxHoldingBars'],
+                                 run['params']['holdThresholdPct'], reference=run['technical'].get('referencePrice'),
+                                 basis=run['params'].get('targetBasis', 'entry_price'))
         repo.finish_run('execution', session['id'], run['role'], {'decision': run['decision'], 'validation': outcome})
         if not champion.get('complete') or not outcome['complete']: continue
         key = {'candidateId': run['candidateVersionId'], 'sessionId': session['id']}

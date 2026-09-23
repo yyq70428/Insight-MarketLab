@@ -115,3 +115,38 @@ def test_crypto_and_intraday_target_units_are_not_stock_trading_days():
 def test_previous_policy_params_receive_position_window_default():
     assert validate_params('technical',{'macdMode':'histogram'})['macdPositionLookback']==120
     with pytest.raises(ValueError):validate_params('technical',{'macdPositionLookback':0})
+
+
+def test_stale_harmonic_is_dropped_not_merely_discounted():
+    """The sample frame's freshest ABCD is 15 bars old; the default 5-bar window excludes it."""
+    default=technical_report(frame(),symbol='0050.TW')
+    assert default['components']['harmonics']['score']==50
+    assert '超過有效期' in default['components']['harmonics']['reason']
+    widened=technical_report(frame(),params={'harmonicMaxAge':20},symbol='0050.TW')
+    assert widened['components']['harmonics']['score']!=50
+    assert '距今 15 根' in widened['components']['harmonics']['reason']
+
+
+def test_harmonic_window_never_strengthens_a_signal_as_it_ages():
+    scores=[abs(technical_report(frame(),params={'harmonicMaxAge':age},symbol='0050.TW')
+                ['components']['harmonics']['score']-50) for age in (1,5,20,90)]
+    assert scores[0]==scores[1]==0 and scores[2]>0 and scores[3]>=0
+
+
+def test_atr_multiples_move_the_price_legs():
+    base=technical_report(frame(),symbol='0050.TW')
+    wide=technical_report(frame(),params={'atrUpsideMult':3,'atrDownsideMult':2,'atrEntryMult':0},symbol='0050.TW')
+    atr=base['atr']
+    assert wide['expectedSell']-base['expectedSell']==pytest.approx(atr*1.5,abs=.01)
+    assert base['downside']-wide['downside']==pytest.approx(atr,abs=.01)
+    assert wide['expectedBuy']==pytest.approx(base['referencePrice'],abs=.01)
+    assert wide['atrMultiples']=={'upside':3,'downside':2,'entry':0}
+
+
+def test_new_technical_knobs_are_exposed_to_the_adaptive_agent():
+    from app.backend.flow.policies import POLICY_SCHEMA, TechnicalPolicy, ExecutionPolicy
+    for key in ('harmonicHalfLife','harmonicMaxAge','positionWeight','atrUpsideMult','atrDownsideMult','atrEntryMult'):
+        assert f'technical.{key}' in POLICY_SCHEMA, key
+        low,high=POLICY_SCHEMA[f'technical.{key}']
+        with pytest.raises(ValueError): validate_params('technical',{key:high*10+1})
+    assert 'targetBasis' in ExecutionPolicy.model_fields and 'harmonicMaxAge' in TechnicalPolicy.model_fields

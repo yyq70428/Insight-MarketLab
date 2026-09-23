@@ -15,7 +15,24 @@ def decide(technical: dict, news: dict, technical_weight: float = .5, min_confid
             "risk": "歷史訊號與紙上驗證不代表未來績效", "frozen": True}
 
 
-def paper_validate(decision: dict, future: list[dict], target: float, stop: float, max_bars: int = 5, hold_threshold_pct: float = 2) -> dict:
+def rebase_targets(entry: float, target: float, stop: float, reference: float | None, basis: str = "entry_price") -> dict:
+    """Shift the anchor-derived legs onto the actual fill.
+
+    The technical Agent measures both legs in ATR units from the anchor close, but the order is
+    filled at the next bar's open.  An overnight gap in the trade's favour otherwise consumes the
+    intended move before entry, so the target is already touched on the first bar and the position
+    is closed for a fraction of the planned edge.  Translating both legs by the gap keeps the
+    intended ATR distance; "anchor_close" reproduces the pre-fix behaviour for older sessions.
+    """
+    if basis != "entry_price" or not reference:
+        return {"target": target, "stop": stop, "basis": "anchor_close", "shift": 0.0, "reference": reference}
+    shift = entry - reference
+    return {"target": round(target+shift, 4), "stop": round(stop+shift, 4), "basis": "entry_price",
+            "shift": round(shift, 4), "reference": reference}
+
+
+def paper_validate(decision: dict, future: list[dict], target: float, stop: float, max_bars: int = 5,
+                   hold_threshold_pct: float = 2, reference: float | None = None, basis: str = "entry_price") -> dict:
     if not future:
         return {"complete": False, "success": None, "bars": 0, "requiredBars": max_bars,
                 "netReturnPct": None, "reason": "尚無錨點後完整 K 線"}
@@ -31,6 +48,9 @@ def paper_validate(decision: dict, future: list[dict], target: float, stop: floa
                 "bars": len(bars), "requiredBars": max_bars, "entryTime": bars[0].get("time"), "exitTime": bars[-1].get("time"),
                 "reason": "觀察期完成" if complete else "等待後續完整 K 線"}
     is_buy = decision["action"] == "BUY"
+    planned_target, planned_stop = target, stop
+    rebased = rebase_targets(entry, target, stop, reference, basis)
+    target, stop = rebased["target"], rebased["stop"]
     exit_price, reason = bars[-1]["close"], "time"
     consumed = 0
     for bar in bars:
@@ -48,4 +68,6 @@ def paper_validate(decision: dict, future: list[dict], target: float, stop: floa
     return {"complete": complete, "entry": entry, "exit": exit_price, "exitReason": reason,
             "netReturnPct": round(gross-.2, 3) if complete else None, "success": gross-.2 > 0 if complete else None,
             "bars": consumed, "requiredBars": max_bars, "entryTime": bars[0].get("time"), "exitTime": bars[consumed-1].get("time"),
+            "target": target, "stop": stop, "plannedTarget": planned_target, "plannedStop": planned_stop,
+            "targetBasis": rebased["basis"], "entryShift": rebased["shift"], "anchorReference": rebased["reference"],
             "reason": "驗證完成" if complete else "等待後續完整 K 線"}

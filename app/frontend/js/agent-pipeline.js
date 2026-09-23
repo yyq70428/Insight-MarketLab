@@ -16,9 +16,15 @@ export function initPipeline({getContext, selectSession, replay, syncSession}) {
 
   function params() {
     const weights = Object.fromEntries(['harmonics','supportResistance','macd','rsi'].map((name, i) => [name, Number(document.querySelectorAll('.weights input')[i].value)]));
-    return {technical:{weights},news:{lookbackDays:Number($('.news-fields input').value),rounds:parseInt($('.news-fields select').value)},
+    return {technical:{weights,
+      harmonicMaxAge:Number($('#harmonicMaxAge').value),harmonicHalfLife:Number($('#harmonicHalfLife').value),
+      positionWeight:Number($('#positionWeight').value)/100,macdPositionLookback:Number($('#macdPositionLookback').value),
+      atrUpsideMult:Number($('#atrUpsideMult').value),atrDownsideMult:Number($('#atrDownsideMult').value),
+      atrEntryMult:Number($('#atrEntryMult').value)},
+      news:{lookbackDays:Number($('.news-fields input').value),rounds:parseInt($('.news-fields select').value)},
       execution:{technicalWeight:Number($('#executionWeight').value)/100,minConfidence:Number($('#confidence').value),
-      maxHoldingBars:Number($('#maxHold').value),holdThresholdPct:Number($('#holdThreshold').value)}};
+      maxHoldingBars:Number($('#maxHold').value),holdThresholdPct:Number($('#holdThreshold').value),
+      targetBasis:$('#targetBasis').value}};
   }
 
   function validForm(batchMode = false) {
@@ -206,10 +212,17 @@ export function initPipeline({getContext, selectSession, replay, syncSession}) {
       const saved=JSON.parse(localStorage.getItem('marketlab.agentParams')||'null');
       if(saved){
         Object.values(saved.technical.weights).forEach((v,i)=>{const input=document.querySelectorAll('.weights input')[i];input.value=v;input.dispatchEvent(new Event('input'))});
+        // Params saved before these controls existed simply keep the field defaults.
+        const slider=(id,value)=>{if(value==null)return;const input=$(id);input.value=value;input.dispatchEvent(new Event('input'))};
+        slider('#harmonicMaxAge',saved.technical.harmonicMaxAge);slider('#harmonicHalfLife',saved.technical.harmonicHalfLife);
+        slider('#positionWeight',saved.technical.positionWeight==null?null:saved.technical.positionWeight*100);
+        slider('#macdPositionLookback',saved.technical.macdPositionLookback);
+        ['atrUpsideMult','atrDownsideMult','atrEntryMult'].forEach(name=>{if(saved.technical[name]!=null)$('#'+name).value=saved.technical[name]});
         $('.news-fields input').value=saved.news.lookbackDays;$('.news-fields select').value=saved.news.rounds+' 輪';
         $('#executionWeight').value=saved.execution.technicalWeight*100;$('#executionWeight').dispatchEvent(new Event('input'));
         $('#confidence').value=saved.execution.minConfidence;$('#confidence').dispatchEvent(new Event('input'));
         $('#maxHold').value=saved.execution.maxHoldingBars;$('#holdThreshold').value=saved.execution.holdThresholdPct;
+        if(saved.execution.targetBasis)$('#targetBasis').value=saved.execution.targetBasis;
       }
       const batchId=localStorage.getItem('marketlab.lastBatch');
       if(batchId){const row=await request(`/api/flow/batches/${batchId}`);renderedBatchRounds=(row.rounds||[]).filter(round=>round.completed).length;$('#batchStart').value=row.startDate;$('#batchEnd').value=row.endDate;$('#maxHold').value=row.maxHoldingDays;$('#holdThreshold').value=row.holdThresholdPct;renderBatch(row);await pollBatch(batchId)}

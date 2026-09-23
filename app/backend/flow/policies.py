@@ -38,10 +38,17 @@ class TechnicalPolicy(StrictPolicy):
     harmonicMinScore: float = Field(0, ge=0, le=100)
     formingDiscount: float = Field(.75, ge=0, le=1)
     harmonicHalfLife: int = Field(60, ge=5, le=250)
+    # A completed pattern stops being actionable once price has walked away from it.
+    # Beyond this age the pattern is dropped outright instead of decaying towards neutral.
+    harmonicMaxAge: int = Field(5, ge=1, le=250)
     srMode: Literal["distance", "strength"] = "distance"
     srDistanceScale: float = Field(3, ge=.1, le=20)
     srAtrSpace: float = Field(1, ge=.1, le=10)
     srPriceSpacePct: float = Field(.5, ge=.1, le=10)
+    # Price legs are ATR multiples around the anchor close; execution re-bases them on the fill.
+    atrUpsideMult: float = Field(1.5, ge=.2, le=10)
+    atrDownsideMult: float = Field(1, ge=.2, le=10)
+    atrEntryMult: float = Field(.35, ge=0, le=5)
 
 
 class NewsPolicy(StrictPolicy):
@@ -63,6 +70,9 @@ class ExecutionPolicy(StrictPolicy):
     minConfidence: float = Field(52, ge=0, le=100)
     maxHoldingBars: int = Field(5, ge=1, le=7)
     holdThresholdPct: float = Field(2, ge=.1, le=20)
+    # The technical legs are measured from the anchor close, but the fill happens on the next
+    # open.  Re-basing keeps the intended ATR distance; "anchor_close" reproduces the old runs.
+    targetBasis: Literal["entry_price", "anchor_close"] = "entry_price"
 
 
 class AdaptivePolicy(StrictPolicy):
@@ -75,6 +85,11 @@ class AdaptivePolicy(StrictPolicy):
 POLICY_SCHEMA = {
     "technical.weights.*": [0, 100], "technical.macdFast": [5, 20], "technical.macdSlow": [21, 60],
     "technical.macdSignal": [3, 20], "technical.rsiPeriod": [7, 28], "technical.formingDiscount": [0, 1],
+    "technical.macdLookback": [2, 30], "technical.macdPositionLookback": [30, 250],
+    "technical.slopeWeight": [0, 1], "technical.positionWeight": [0, 1], "technical.rsiSensitivity": [.1, 3],
+    "technical.harmonicMinScore": [0, 100], "technical.harmonicHalfLife": [5, 250], "technical.harmonicMaxAge": [1, 250],
+    "technical.srDistanceScale": [.1, 20], "technical.srAtrSpace": [.1, 10], "technical.srPriceSpacePct": [.1, 10],
+    "technical.atrUpsideMult": [.2, 10], "technical.atrDownsideMult": [.2, 10], "technical.atrEntryMult": [0, 5],
     "news.lookbackDays": [7, 90], "news.rounds": [3, 5], "news.stockWeight": [.2, .9],
     "execution.technicalWeight": [0, 1], "execution.newsEventThreshold": [.05, .45],
     "execution.newsEventCoverage": [0, 1], "execution.newsEventBoost": [0, .30],

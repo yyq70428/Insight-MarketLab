@@ -7,6 +7,7 @@ let currentScope=localStorage.getItem('marketlab.dashboardScope')||'',curve=[],s
 const names={technical:'第一層 · 技術 Agent',news:'第一層 · 新聞 Agent',execution:'第二層 · 執行 Agent',adaptive:'第三層 · 自適應 Agent'};
 const labels={weights:'權重',harmonics:'諧波',supportResistance:'支撐壓力',macd:'MACD',rsi:'RSI',macdMode:'MACD 模式',macdFast:'MACD 快線',macdSlow:'MACD 慢線',macdSignal:'訊號週期',macdLookback:'回看根數',slopeWeight:'斜率權重',positionWeight:'位置權重',rsiMode:'RSI 模式',rsiPeriod:'RSI 週期',rsiSensitivity:'RSI 敏感度',harmonicMinScore:'最低諧波評分',formingDiscount:'形成中折減',harmonicHalfLife:'諧波半衰期',srMode:'支撐壓力模式',srDistanceScale:'距離尺度',lookbackDays:'新聞回看天數',rounds:'搜尋輪數',stockWeight:'標的新聞權重',minRelevance:'最低相關度',inferenceBias:'新聞推論模式',technicalWeight:'技術權重',minConfidence:'最低信心',maxHoldingBars:'最長持有根數',holdThresholdPct:'HOLD 波動門檻 %',minShadowSessions:'最少影子樣本',minImprovementPct:'最低改善百分點',faithfulnessThreshold:'忠實度門檻'};
 Object.assign(labels,{macdPositionLookback:'波形位置回看根數',macdLookback:'動能斜率回看根數',slopeWeight:'波形模式斜率占比',positionWeight:'高低位追價折減'});
+Object.assign(labels,{harmonicMaxAge:'諧波有效期（根）',atrUpsideMult:'上檔 ATR 倍數',atrDownsideMult:'下檔 ATR 倍數',atrEntryMult:'買點 ATR 倍數',targetBasis:'目標價基準',srAtrSpace:'ATR 空間倍數',srPriceSpacePct:'價格空間 %',maxCandidatesPerAgent:'每 Agent 最多候選',rejectAfterShadowSessions:'淘汰前影子樣本數'});
 const badge=value=>'<span class="badge '+esc(value||'')+'">'+esc(value||'—')+'</span>';
 const json=value=>'<pre>'+esc(JSON.stringify(value,null,2))+'</pre>';
 const notice=message=>{$('#dbNotice').textContent=message;$('#dbNotice').classList.toggle('hidden',!message)};

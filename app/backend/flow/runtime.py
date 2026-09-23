@@ -197,7 +197,8 @@ class FlowRuntime:
                   and candle_closed(session['symbol'],session['interval'],r['time'])]
         params = session['params']['execution']
         target, stop = self.targets(decision, technical)
-        validation = paper_validate(decision, future, target, stop, params['maxHoldingBars'], params['holdThresholdPct'])
+        validation = paper_validate(decision, future, target, stop, params['maxHoldingBars'], params['holdThresholdPct'],
+                                    reference=technical.get('referencePrice'), basis=params['targetBasis'])
         outcome_time = None
         if validation.get('exitTime'):
             day = candle_day(session['symbol'], session['interval'], validation['exitTime'])
@@ -206,7 +207,9 @@ class FlowRuntime:
         self.repo.event(session, 'execution', 'validation_completed' if validation['complete'] else 'validation_pending', bars=validation['bars'])
         from .learning import validate_shadows
         validate_shadows(self, session, future, validation)
-        return {'decision': decision, 'validation': validation, 'target': target, 'stop': stop,
+        # Report the legs that actually governed the exit, keeping the anchor-derived plan alongside.
+        return {'decision': decision, 'validation': validation, 'target': validation.get('target', target),
+                'stop': validation.get('stop', stop), 'plannedTarget': target, 'plannedStop': stop,
                 'replay': future[:validation['bars']]}
 
     def targets(self, decision, technical):
