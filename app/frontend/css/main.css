@@ -11,3 +11,9 @@
 .atr-fields label{color:var(--muted);font-size:11px}
 .atr-fields input{width:100%;height:32px;margin-top:4px;padding:0 8px;border-radius:5px;border:1px solid var(--line2);background:var(--panel2)}
 .execution-card select{width:100%;height:35px;margin-top:5px;padding:0 10px;border-radius:5px;border:1px solid var(--line2);background:var(--panel2)}
+.panel-resizer{position:absolute;left:39px;right:0;top:0;height:7px;z-index:5;cursor:row-resize;touch-action:none;background:transparent;transition:background .12s}
+.panel-resizer::after{content:"";position:absolute;left:50%;top:2px;width:36px;height:3px;margin-left:-18px;border-radius:2px;background:var(--line2);transition:background .12s}
+.panel-resizer:hover::after,.panel-resizer:focus-visible::after,.panel-resizer.dragging::after{background:var(--blue)}
+.panel-resizer:hover,.panel-resizer.dragging{background:#2967ff22}
+.panel-resizer:focus-visible{outline:1px solid var(--blue);outline-offset:-1px}
+.chart-column.resizing{user-select:none;cursor:row-resize}
