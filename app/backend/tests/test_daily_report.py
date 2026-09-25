@@ -148,3 +148,131 @@ def test_news_failure_keeps_the_technical_half_of_the_row(monkeypatch):
     row = module.analyse_symbol("2330.TW", {}, {})
     assert row["technical"]["bullishPct"] == 61.0
     assert row["news"] is None and row["errors"] == {"news": "模型無回應"}
+
+
+def test_history_falls_back_to_memory_without_mongo(monkeypatch):
+    monkeypatch.setattr(module.repository, "available", lambda: False)
+    log = module.ReportHistory(keep=3)
+    for index in range(4):
+        log.save({"id": f"run{index}", "status": "completed", "total": 70, "startedAt": f"2026-09-2{index}T18:00"})
+    listed = log.list()
+    assert listed["persistent"] is False
+    # Bounded and newest first; the oldest run has been dropped.
+    assert [row["id"] for row in listed["runs"]] == ["run3", "run2", "run1"]
+    assert log.get("run3")["total"] == 70 and log.get("run0") is None
+
+
+def test_history_update_replaces_the_same_run_rather_than_appending(monkeypatch):
+    monkeypatch.setattr(module.repository, "available", lambda: False)
+    log = module.ReportHistory()
+    log.save({"id": "r1", "status": "running", "startedAt": "2026-09-24T18:00"})
+    log.save({"id": "r1", "status": "completed", "startedAt": "2026-09-24T18:00", "elapsedSeconds": 9})
+    runs = log.list()["runs"]
+    assert len(runs) == 1 and runs[0]["status"] == "completed" and runs[0]["elapsedSeconds"] == 9
+
+
+def test_history_summary_excludes_the_heavy_rows_payload(monkeypatch):
+    monkeypatch.setattr(module.repository, "available", lambda: False)
+    log = module.ReportHistory()
+    log.save({"id": "r1", "status": "completed", "startedAt": "2026-09-24T18:00", "rows": sample()["rows"]})
+    assert "rows" not in log.list()["runs"][0]
+    assert len(log.get("r1")["rows"]) == 3
+
+
+def test_a_mongo_write_failure_never_breaks_a_run(monkeypatch):
+    class Exploding:
+        def update_one(self, *a, **k): raise RuntimeError("Atlas 斷線")
+    log = module.ReportHistory()
+    monkeypatch.setattr(type(log), "collection", property(lambda self: Exploding()))
+    log.save({"id": "r1", "status": "completed", "startedAt": "2026-09-24T18:00"})
+    assert log.get("r1")["status"] == "completed"
+
+
+def test_run_records_history_for_both_success_and_failure(monkeypatch):
+    monkeypatch.setattr(module.repository, "available", lambda: False)
+    monkeypatch.setattr(module, "history", module.ReportHistory())
+    monkeypatch.setattr(module, "mail_configured", lambda: False)
+    monkeypatch.setattr(module, "collect", lambda symbols, progress: {
+        **sample(), "startedAt": "2026-09-24T18:00", "completedAt": "2026-09-24T18:01"})
+    service = DailyReportService()
+    service.run(["2330.TW"], notify=True)
+    run = module.history.list()["runs"][0]
+    assert run["status"] == "completed" and run["requestedSymbols"] == ["2330.TW"] and run["trigger"] == "manual"
+    assert run["delivery"]["sent"] is False and "郵件設定有問題" in run["delivery"]["reason"]
+
+    monkeypatch.setattr(module, "collect", lambda symbols, progress: (_ for _ in ()).throw(RuntimeError("上游全掛")))
+    with pytest.raises(RuntimeError):
+        service.run(None, notify=False, trigger="schedule")
+    failed = module.history.list()["runs"][0]
+    assert failed["status"] == "failed" and failed["error"] == "上游全掛"
+    assert failed["requestedSymbols"] is None and failed["total"] == 70 and failed["trigger"] == "schedule"
+
+
+def test_concurrent_runs_are_rejected(monkeypatch):
+    service = DailyReportService()
+    service.running = True
+    with pytest.raises(RuntimeError, match="執行中"):
+        service.run(["2330.TW"])
+
+
+def mail_settings(**overrides):
+    base = {"smtp_host": "smtp.gmail.com", "smtp_user": "bot@gmail.com",
+            "smtp_password": "abcdefghijklmnop", "report_recipients": "me@gmail.com"}
+    return Settings(**{**base, **overrides})
+
+
+def test_pasted_chinese_placeholder_is_reported_instead_of_a_unicode_crash(monkeypatch):
+    from app.backend.services import mailer
+    monkeypatch.setattr(mailer, "get_settings", lambda: mail_settings(smtp_password="<Gmail 應用程式密碼，不是登入密碼>"))
+    problems = mailer.missing_settings()
+    assert any("非 ASCII" in p and "SMTP_PASSWORD" in p for p in problems)
+    assert not mailer.mail_configured()
+    with pytest.raises(mailer.MailNotConfigured, match="非 ASCII"):
+        mailer.send_mail("s", "<b>h</b>", "h")
+
+
+def test_google_app_password_spaces_are_stripped_before_auth():
+    from app.backend.services.mailer import app_password
+    assert app_password("abcd efgh ijkl mnop") == "abcdefghijklmnop"
+    assert app_password("  abcd\tefgh ") == "abcdefgh"
+    assert app_password("") == ""
+
+
+def test_valid_mail_settings_report_no_problems(monkeypatch):
+    from app.backend.services import mailer
+    monkeypatch.setattr(mailer, "get_settings", lambda: mail_settings(smtp_password="abcd efgh ijkl mnop"))
+    assert mailer.missing_settings() == [] and mailer.mail_configured()
+
+
+def test_an_address_shaped_like_a_placeholder_is_rejected(monkeypatch):
+    from app.backend.services import mailer
+    monkeypatch.setattr(mailer, "get_settings", lambda: mail_settings(smtp_from="<你的信箱>"))
+    assert any("不是一個電子郵件位址" in p for p in mailer.missing_settings())
+
+
+def test_report_without_a_base_url_stays_link_free():
+    html = render_html(sample())
+    assert "<a href" not in html and "2330.TW" in html
+
+
+def test_preview_links_are_relative_and_carry_each_row_own_anchor():
+    html = render_html(sample(), link_base="", link_target="_blank")
+    assert '<a href="/?symbol=2330.TW&amp;anchor=2026-09-23" target="_blank" rel="noopener"' in html
+    assert '<a href="/?symbol=AAPL&amp;anchor=2026-09-23"' in html
+    # The failed row has no anchor, so it links to the symbol without a date rather than a broken one.
+    assert '<a href="/?symbol=6488.TWO"' in html and "anchor=None" not in html
+
+
+def test_mail_links_are_absolute_and_tolerate_a_trailing_slash():
+    from app.backend.services.daily_report import chart_link
+    assert chart_link("https://lab.example.com/", "2330.TW", "2026-09-23") == \
+        "https://lab.example.com/?symbol=2330.TW&anchor=2026-09-23"
+    assert chart_link("", "AAPL", None) == "/?symbol=AAPL"
+    assert chart_link(None, "AAPL", "2026-09-23") is None
+
+
+def test_link_query_is_encoded_not_injected():
+    rows = sample()["rows"][:1]
+    rows[0]["symbol"] = 'X"><script>alert(1)</script>'
+    html = render_html({**sample(), "rows": rows}, link_base="")
+    assert "<script>" not in html and "%3Cscript%3E" in html

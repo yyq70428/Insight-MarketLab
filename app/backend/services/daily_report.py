@@ -14,10 +14,14 @@ from __future__ import annotations
 import html as html_escape
 import threading
 import time
+from collections import deque
 from datetime import date, datetime, timedelta
+from urllib.parse import urlencode
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from ..config import get_settings
+from ..flow.repository import repository
 from ..data.universe import NAMES, SECTORS, SYMBOLS, market_of
 from ..flow.policies import DEFAULT_POLICIES
 from ..analysis.technical_agent import technical_report
@@ -177,9 +181,29 @@ def _tone(percent):
     return "#15803d" if percent >= 55 else "#b91c1c" if percent <= 45 else "#6b7280"
 
 
-def render_html(result: dict) -> str:
+def chart_link(base: str | None, symbol: str, anchor: str | None) -> str | None:
+    """Deep link back into the chart page at this symbol and its own anchor date.
+
+    `base` is "" for the in-app preview (relative is fine) and an absolute origin for mail,
+    where a relative href would resolve against the mail client. None disables linking, which
+    is what happens when PUBLIC_BASE_URL is unset and the report is going out by mail.
+    """
+    if base is None:
+        return None
+    params = {"symbol": symbol, **({"anchor": anchor} if anchor else {})}
+    return f'{base.rstrip("/")}/?{urlencode(params)}'
+
+
+def render_html(result: dict, link_base: str | None = None, link_target: str | None = None) -> str:
     stats = summarise(result)
     esc = html_escape.escape
+
+    def linked(symbol, anchor, text):
+        href = chart_link(link_base, symbol, anchor)
+        if not href:
+            return text
+        target = f' target="{link_target}" rel="noopener"' if link_target else ""
+        return f'<a href="{esc(href)}"{target} style="color:#1d4ed8;text-decoration:none">{text}</a>'
     head = ("標的", "市場", "產業", "錨點", "技術面看多%", "建議",
             *(COMPONENT_LABELS[key] for key in TECHNICAL_KEYS), "新聞面看多%", "新聞覆蓋", "證據", "方向一致性")
     header = "".join(f'<th style="padding:8px 9px;border-bottom:2px solid #cbd2dd;text-align:right;'
@@ -187,7 +211,7 @@ def render_html(result: dict) -> str:
     body = []
     for row in rank(result["rows"]):
         technical, news = row.get("technical"), row.get("news")
-        label = f'{esc(row["symbol"])} {esc(row["name"])}'
+        label = linked(row["symbol"], row.get("anchor"), f'{esc(row["symbol"])} {esc(row["name"])}')
         if not technical:
             reason = row["errors"].get("technical") or row["errors"].get("data") or "未知錯誤"
             body.append(f'<tr>{_cell(label, "left", True)}'
@@ -218,9 +242,10 @@ def render_html(result: dict) -> str:
         limitations = "".join(f"<li>{esc(item)}</li>" for item in news["limitations"][:3])
         details.append(
             f'<div style="margin:0 0 14px;padding:11px 13px;border:1px solid #e3e6ec;border-radius:7px">'
-            f'<div style="font-weight:600;margin-bottom:5px">{esc(row["symbol"])} {esc(row["name"])}'
-            f'<span style="font-weight:400;color:#6b7280"> · 新聞看多 {_pct(news.get("bullishPct"))}%'
-            f' · 引用 {news["findingCount"]}/{news["sourceCount"]} 篇</span></div>'
+            f'<div style="font-weight:600;margin-bottom:5px">'
+            + linked(row["symbol"], row.get("anchor"), f'{esc(row["symbol"])} {esc(row["name"])}')
+            + f'<span style="font-weight:400;color:#6b7280"> · 新聞看多 {_pct(news.get("bullishPct"))}%'
+              f' · 引用 {news["findingCount"]}/{news["sourceCount"]} 篇</span></div>'
             f'<div style="color:#374151;line-height:1.65">{esc(news["summary"])}</div>'
             + (f'<ul style="margin:7px 0 0;padding-left:18px;color:#6b7280;font-size:12px">{limitations}</ul>' if limitations else "")
             + "</div>")
@@ -265,6 +290,71 @@ def render_html(result: dict) -> str:
 </div>"""
 
 
+SUMMARY_FIELDS = ("id", "status", "trigger", "notify", "requestedSymbols", "total", "reportDate",
+                  "startedAt", "completedAt", "elapsedSeconds", "stats", "delivery", "error")
+
+
+class ReportHistory:
+    """Mongo-backed run log with an in-memory tail.
+
+    The page must still work when MONGODB_URI is unset, so every write goes to a bounded
+    deque as well and reads fall back to it. The deque is the only copy in that mode, so
+    it does not survive a restart - which is stated on the page rather than hidden.
+    """
+
+    def __init__(self, keep: int = 30):
+        self.recent: deque[dict] = deque(maxlen=keep)
+        self.lock = threading.Lock()
+
+    @property
+    def collection(self):
+        return repository.db.daily_reports if repository.available() and repository.db is not None else None
+
+    def save(self, record: dict):
+        with self.lock:
+            for index, existing in enumerate(self.recent):
+                if existing["id"] == record["id"]:
+                    self.recent[index] = record
+                    break
+            else:
+                self.recent.append(record)
+        collection = self.collection
+        if collection is None:
+            return
+        try:
+            collection.update_one({"id": record["id"]}, {"$set": record}, upsert=True)
+        except Exception:
+            pass  # the in-memory copy already succeeded; a log write must not fail a run
+
+    def list(self, limit: int = 20) -> dict:
+        collection = self.collection
+        if collection is not None:
+            try:
+                rows = list(collection.find({}, {"_id": 0, **{key: 1 for key in SUMMARY_FIELDS}})
+                            .sort("startedAt", -1).limit(limit))
+                return {"runs": rows, "persistent": True}
+            except Exception:
+                pass
+        with self.lock:
+            rows = [{key: run.get(key) for key in SUMMARY_FIELDS} for run in reversed(self.recent)]
+        return {"runs": rows[:limit], "persistent": False}
+
+    def get(self, run_id: str) -> dict | None:
+        collection = self.collection
+        if collection is not None:
+            try:
+                found = collection.find_one({"id": run_id}, {"_id": 0})
+                if found:
+                    return found
+            except Exception:
+                pass
+        with self.lock:
+            return next((dict(run) for run in self.recent if run["id"] == run_id), None)
+
+
+history = ReportHistory()
+
+
 class DailyReportService:
     def __init__(self):
         self.lock = threading.Lock()
@@ -272,7 +362,7 @@ class DailyReportService:
         self.started = False
         self.running = False
         self.last_run_date: date | None = None
-        self.status = {"running": False, "lastResult": None, "lastError": None, "progress": None}
+        self.status = {"running": False, "lastResult": None, "lastError": None, "progress": None, "runId": None}
 
     def start(self):
         if not get_settings().daily_report_enabled:
@@ -302,21 +392,30 @@ class DailyReportService:
                 now = datetime.now(ZoneInfo(get_settings().daily_report_timezone))
                 if self.due(now):
                     self.last_run_date = now.date()
-                    self.run()
+                    self.run(trigger="schedule")
             except Exception as exc:
                 self.status["lastError"] = str(exc)
             self.stop_event.wait(60)
 
-    def run(self, symbols=None, notify=True) -> dict:
+    def run(self, symbols=None, notify=True, trigger="manual") -> dict:
         with self.lock:
             if self.running:
                 raise RuntimeError("每日報告正在執行中")
             self.running = True
-        self.status.update(running=True, lastError=None, progress={"completed": 0, "total": len(symbols or SYMBOLS)})
+        settings = get_settings()
+        targets = list(symbols) if symbols else None
+        record = {"id": uuid4().hex, "status": "running", "trigger": trigger, "notify": notify,
+                  "requestedSymbols": targets, "total": len(targets or SYMBOLS),
+                  "startedAt": datetime.now(ZoneInfo(settings.daily_report_timezone)).isoformat(),
+                  "reportDate": None, "completedAt": None, "elapsedSeconds": None,
+                  "stats": None, "delivery": None, "error": None, "rows": []}
+        history.save(record)
+        self.status.update(running=True, lastError=None, runId=record["id"],
+                           progress={"completed": 0, "total": record["total"]})
         try:
             def progress(done, total, symbol):
                 self.status["progress"] = {"completed": done, "total": total, "symbol": symbol}
-            result = collect(symbols, progress)
+            result = collect(targets, progress)
             stats = summarise(result)
             delivery = {"sent": False, "reason": "未要求寄送"}
             if notify:
@@ -324,17 +423,23 @@ class DailyReportService:
                     subject = (f"MarketLab {result['reportDate']} 每日報告 · "
                                f"偏多 {stats['bullish']} / 偏空 {stats['bearish']} / 衝突 {stats['conflicts']}")
                     try:
-                        delivery = send_mail(subject, render_html(result), render_text(result))
+                        html = render_html(result, link_base=settings.public_base_url or None)
+                        delivery = send_mail(subject, html, render_text(result))
                     except Exception as exc:
                         delivery = {"sent": False, "reason": f"寄送失敗：{exc}"}
                         self.status["lastError"] = delivery["reason"]
                 else:
-                    delivery = {"sent": False, "reason": "郵件設定不完整，缺少：" + "、".join(missing_settings())}
-            summary = {"reportDate": result["reportDate"], "stats": stats, "delivery": delivery,
-                       "elapsedSeconds": result["elapsedSeconds"], "completedAt": result["completedAt"]}
+                    delivery = {"sent": False, "reason": "郵件設定有問題：" + "；".join(missing_settings())}
+            record.update(status="completed", reportDate=result["reportDate"], completedAt=result["completedAt"],
+                          elapsedSeconds=result["elapsedSeconds"], stats=stats, delivery=delivery, rows=result["rows"])
+            history.save(record)
+            summary = {key: record[key] for key in SUMMARY_FIELDS}
             self.status["lastResult"] = summary
             return {**summary, "rows": result["rows"]}
         except Exception as exc:
+            record.update(status="failed", error=str(exc),
+                          completedAt=datetime.now(ZoneInfo(settings.daily_report_timezone)).isoformat())
+            history.save(record)
             self.status["lastError"] = str(exc)
             raise
         finally:

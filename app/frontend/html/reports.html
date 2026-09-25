@@ -1,0 +1,49 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MarketLab｜每日報告</title>
+<link rel="stylesheet" href="/static/css/main.css"><link rel="stylesheet" href="/static/css/reports.css?v=1"></head>
+<body><header class="page-top">
+  <a class="brand" href="/"><span class="brand-bars"><i></i><i></i><i></i></span>MarketLab</a>
+  <h1>每日雙 Agent 報告</h1>
+  <nav><a href="/">圖表</a><a href="/dashboard">Agent 後台</a><a href="/scanner">掃描器</a><a href="/quant">量化回測</a></nav>
+</header>
+<main class="reports-main">
+  <section class="report-panel">
+    <header><h2>執行設定</h2><span class="muted" id="scheduleNote">載入排程設定中…</span></header>
+
+    <div class="picker-head">
+      <div><strong id="selectionLabel">未選取任何標的</strong>
+        <small id="selectionHint">直接執行就是系統預設：固定清單全部 70 檔。</small></div>
+      <div class="button-row">
+        <button type="button" class="secondary" id="selectNone">清除選取</button>
+        <button type="button" class="secondary" id="selectAll">全選</button>
+      </div>
+    </div>
+
+    <div id="groups" class="symbol-groups">載入標的清單中…</div>
+
+    <div class="run-bar">
+      <label class="inline-check"><input type="checkbox" id="notify" checked>執行完寄出郵件</label>
+      <button class="primary" id="runNow">開始執行</button>
+    </div>
+    <div id="runHint" class="muted run-hint"></div>
+    <div id="progress" class="progress-box hidden" aria-live="polite">
+      <progress id="progressBar" value="0" max="100"></progress>
+      <div id="progressText">準備中…</div>
+    </div>
+  </section>
+
+  <section class="report-panel">
+    <header><h2>執行紀錄</h2><span class="muted" id="historyNote"></span></header>
+    <div id="history">載入中…</div>
+  </section>
+
+  <section class="report-panel hidden" id="detailPanel">
+    <header><h2 id="detailTitle">報告內容</h2>
+      <button type="button" class="secondary" id="closeDetail">關閉</button></header>
+    <div id="detailMeta" class="muted"></div>
+    <iframe id="detailFrame" class="report-frame" sandbox="allow-popups allow-popups-to-escape-sandbox" title="報告內容預覽"></iframe>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+<script type="module" src="/static/js/reports.js?v=1"></script>
+</body></html>

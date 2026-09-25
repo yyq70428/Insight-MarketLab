@@ -98,6 +98,14 @@ docker compose -f deploy/docker-compose.yml --env-file .env exec -T app python -
 排程到點後依序對每檔跑技術面 Agent 與新聞面 Agent，組成表格與說明寄出。不產生交易決策 —— 執行 Agent 需要凍結錨點
 與後續 K 線才有意義，當日報告給不出來，所以只並列兩個 Agent 的獨立判讀並標出彼此衝突的標的。
 
+報告裡每一列的標的都是連結，點下去會開啟 K 線圖頁並帶入該檔與**它自己的錨點日期**（台股與美股的錨點可能差一天）。
+頁內預覽用相對網址、開新分頁；郵件需要絕對網址，所以要設 `PUBLIC_BASE_URL`，沒設的話郵件版就不帶連結。
+圖表頁接受 `/?symbol=2330.TW&anchor=2026-09-24`，兩個參數都會先驗證格式再套用。
+
+前端頁面在 `/reports`：可勾選要跑哪些標的（不選就是系統預設的全部 70 檔）、手動執行、看即時進度，
+以及歷次執行紀錄。點「查看報告」會在頁內以沙箱 iframe 顯示當次寄出的完整報告。紀錄存在 MongoDB 的
+`daily_reports`；沒有設定 MongoDB 時退回記憶體，頁面會標示重啟後會消失。
+
 ```bash
 # 先用少數標的驗證管線與寄信，不必付整輪的 LLM 費用
 curl -X POST http://127.0.0.1:9021/api/daily-report/run \
@@ -111,7 +119,9 @@ curl http://127.0.0.1:9021/api/daily-report/universe   # 固定清單
 預設 `DAILY_REPORT_ENABLED=false`，要跑請先確認 API 額度。
 
 排程只在 `DAILY_REPORT_TIME` 起算 `DAILY_REPORT_WINDOW_MINUTES` 分鐘內補跑，重啟時間超過窗口就跳過當天，
-避免半夜重啟觸發整輪。Gmail 寄件請用應用程式密碼而非登入密碼。
+避免半夜重啟觸發整輪。Gmail 寄件請用應用程式密碼而非登入密碼（需先開啟兩步驟驗證，於 myaccount.google.com/apppasswords 產生 16 碼）。
+密碼中的空格會自動去除。SMTP 認證只接受 ASCII，若把說明文字誤貼成值，`/api/daily-report/status` 的 `mailMissing`
+會直接指出是哪一項，不會只丟出 smtplib 的 UnicodeEncodeError。
 
 ## 測試
 

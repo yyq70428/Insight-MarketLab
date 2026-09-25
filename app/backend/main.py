@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -29,7 +29,7 @@ from .services import market_data
 from .services.quant import backtest, market_for
 from .services.scanner import scanner
 from .services.alerts import alerts
-from .services.daily_report import daily_report
+from .services.daily_report import daily_report, history as report_history, render_html as render_report_html
 from .data.universe import UNIVERSE, SYMBOLS
 from .services.store import watchlist_store
 from .services.agent_reports import legacy_reports
@@ -270,7 +270,34 @@ def daily_report_run(body: DailyReportRequest, tasks: BackgroundTasks):
         raise HTTPException(409, "每日報告正在執行中")
     tasks.add_task(lambda: daily_report.run(targets, body.notify))
     return {"started": True, "total": len(targets or SYMBOLS), "notify": body.notify,
-            "hint": "以 GET /api/daily-report/status 追蹤進度"}
+            "usedDefault": targets is None, "hint": "以 GET /api/daily-report/status 追蹤進度"}
+
+
+@app.get("/api/daily-report/history")
+def daily_report_history(limit: int = Query(20, ge=1, le=100)):
+    return report_history.list(limit)
+
+
+@app.get("/api/daily-report/history/{run_id}")
+def daily_report_detail(run_id: str):
+    record = report_history.get(run_id)
+    if not record:
+        raise HTTPException(404, "找不到這筆執行紀錄")
+    return record
+
+
+@app.get("/api/daily-report/history/{run_id}/preview", include_in_schema=False)
+def daily_report_preview(run_id: str):
+    """The exact HTML that was mailed, so the page can show what the recipient saw."""
+    record = report_history.get(run_id)
+    if not record:
+        raise HTTPException(404, "找不到這筆執行紀錄")
+    if not record.get("rows"):
+        raise HTTPException(409, "這筆紀錄沒有可呈現的結果")
+    html = render_report_html({"rows": record["rows"], "reportDate": record.get("reportDate") or "—",
+                               "elapsedSeconds": record.get("elapsedSeconds") or 0, "total": record["total"]},
+                              link_base="", link_target="_blank")
+    return Response(content=html, media_type="text/html; charset=utf-8")
 
 
 @app.get("/api/watchlist")
@@ -337,3 +364,6 @@ def stock_page(): return page("stock.html")
 
 @app.get("/quant", include_in_schema=False)
 def quant_page(): return page("quant.html")
+
+@app.get("/reports", include_in_schema=False)
+def reports_page(): return page("reports.html")

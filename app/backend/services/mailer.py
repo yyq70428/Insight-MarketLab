@@ -18,16 +18,30 @@ class MailNotConfigured(RuntimeError):
     pass
 
 
+def app_password(raw: str) -> str:
+    """Google prints app passwords as 'abcd efgh ijkl mnop'; the spaces are presentation only."""
+    return "".join(raw.split())
+
+
 def missing_settings() -> list[str]:
+    """Everything wrong with the mail config, in words the operator can act on."""
     settings = get_settings()
-    missing = []
+    problems = []
     if not settings.smtp_host:
-        missing.append("SMTP_HOST")
+        problems.append("SMTP_HOST 未設定")
     if not settings.sender_address:
-        missing.append("SMTP_FROM 或 SMTP_USER")
+        problems.append("SMTP_FROM 或 SMTP_USER 未設定")
     if not settings.recipient_list:
-        missing.append("REPORT_RECIPIENTS")
-    return missing
+        problems.append("REPORT_RECIPIENTS 未設定")
+    # SMTP AUTH is ASCII-only. Pasting a placeholder or a Chinese note as the value otherwise
+    # surfaces as UnicodeEncodeError from deep inside smtplib, which says nothing useful.
+    for label, value in (("SMTP_USER", settings.smtp_user), ("SMTP_PASSWORD", app_password(settings.smtp_password))):
+        if value and not value.isascii():
+            problems.append(f"{label} 含中文或其他非 ASCII 字元，看起來是把說明文字當成值貼上了")
+    for label, value in (("SMTP_FROM", settings.smtp_from), ("SMTP_USER", settings.smtp_user)):
+        if value and ("@" not in value or value.startswith("<")):
+            problems.append(f"{label} 不是一個電子郵件位址")
+    return problems
 
 
 def mail_configured() -> bool:
@@ -50,16 +64,16 @@ def build_message(subject: str, html: str, text: str, recipients: list[str], sen
 
 def send_mail(subject: str, html: str, text: str, recipients: list[str] | None = None) -> dict:
     settings = get_settings()
-    missing = missing_settings()
-    if missing:
-        raise MailNotConfigured("郵件設定不完整，缺少：" + "、".join(missing))
+    problems = missing_settings()
+    if problems:
+        raise MailNotConfigured("郵件設定有問題：" + "；".join(problems))
     targets = recipients or settings.recipient_list
     message = build_message(subject, html, text, targets)
     context = ssl.create_default_context()
     if settings.smtp_port == 465:
         with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout, context=context) as server:
             if settings.smtp_user:
-                server.login(settings.smtp_user, settings.smtp_password)
+                server.login(settings.smtp_user, app_password(settings.smtp_password))
             server.send_message(message)
     else:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout) as server:
@@ -68,6 +82,6 @@ def send_mail(subject: str, html: str, text: str, recipients: list[str] | None =
                 server.starttls(context=context)
                 server.ehlo()
             if settings.smtp_user:
-                server.login(settings.smtp_user, settings.smtp_password)
+                server.login(settings.smtp_user, app_password(settings.smtp_password))
             server.send_message(message)
     return {"sent": True, "recipients": targets, "subject": subject}

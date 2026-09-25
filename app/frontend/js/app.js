@@ -2,7 +2,16 @@ import {query,request} from "./api.js";import {drawLine} from "./chart.js";impor
 import {initPipeline} from './agent-pipeline.js?v=5';
 import {replayRows} from './replay-data.js';
 import {executionOverlay,outcomeLabel} from './execution-overlay.js?v=1';
-const state={symbol:localStorage.getItem("marketlab.symbol")||"0050.TW",interval:"1d",range:"5y",anchor:"",rows:[],analysis:null,toggles:{harmonics:true,zones:true,zigzag:false,rsi:true,macd:true},searchIndex:0};
+// Deep link from the daily report: /?symbol=2330.TW&anchor=2026-09-24. Both are validated
+// here because they come in from an email client, not just from our own pages.
+const deepLink=(()=>{
+ const params=new URLSearchParams(location.search);
+ const symbol=(params.get("symbol")||"").trim().toUpperCase(),anchor=(params.get("anchor")||"").trim();
+ return {symbol:/^[A-Z0-9][A-Z0-9.\-]{0,19}$/.test(symbol)?symbol:"",
+         anchor:/^\d{4}-\d{2}-\d{2}$/.test(anchor)?anchor:""};
+})();
+if(deepLink.symbol)localStorage.setItem("marketlab.symbol",deepLink.symbol);
+const state={symbol:deepLink.symbol||localStorage.getItem("marketlab.symbol")||"0050.TW",interval:"1d",range:"5y",anchor:deepLink.anchor,rows:[],analysis:null,toggles:{harmonics:true,zones:true,zigzag:false,rsi:true,macd:true},searchIndex:0};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 async function load(){
  const version=Symbol();state.loadVersion=version;clearTimeout(state.replayTimer);state.replaying=false;state.loading=true;state.anchorRows=[];state.executionView=null;$('#batchTradeOverlay').classList.add('hidden');
@@ -102,4 +111,5 @@ function initPanelResize(){
 }
 const pipeline=initPipeline({getContext:()=>({symbol:state.symbol,interval:state.interval,anchor:state.anchor,chartReady:!state.loading&&state.dataKey===`${state.symbol}:${state.interval}:${state.anchor}`}),selectSession,replay,syncSession:syncExecution});
 async function loadWatchlist(){try{const data=await request("/api/watchlist");localStorage.setItem("marketlab.watchlist",JSON.stringify(data.items.map(x=>x.symbol)));renderWatch(data.items.map(x=>x.symbol))}catch{renderWatch(JSON.parse(localStorage.getItem("marketlab.watchlist")||"[]"))}}function renderWatch(items){$("#watchlistItems").innerHTML=items.length?items.map(s=>`<button class="analysis-chip watch-symbol" data-symbol="${s}">${s}</button>`).join(""):"尚無自選標的";$$('.watch-symbol').forEach(b=>b.onclick=()=>{state.symbol=b.dataset.symbol;load()})}$("#addWatchlist").onclick=async()=>{try{await request("/api/watchlist",{method:"POST",body:JSON.stringify({symbol:state.symbol})})}catch{const list=JSON.parse(localStorage.getItem("marketlab.watchlist")||"[]");if(!list.includes(state.symbol))list.push(state.symbol);localStorage.setItem("marketlab.watchlist",JSON.stringify(list))}loadWatchlist()};
-$("#toggleSidebar").onclick=()=>$("#agentSidebar").classList.toggle("open");document.querySelector(".topbar").onclick=e=>{if(innerWidth<=900&&e.target===e.currentTarget)$("#agentSidebar").classList.toggle("open")};addEventListener("resize",debounce(()=>{applyPanelHeights();render()},100));$("#clearDrawings").onclick=()=>showToast("手動畫線已清除");loadWatchlist();initPanelResize();load().then(()=>pipeline.restore());
+$("#toggleSidebar").onclick=()=>$("#agentSidebar").classList.toggle("open");document.querySelector(".topbar").onclick=e=>{if(innerWidth<=900&&e.target===e.currentTarget)$("#agentSidebar").classList.toggle("open")};addEventListener("resize",debounce(()=>{applyPanelHeights();render()},100));$("#clearDrawings").onclick=()=>showToast("手動畫線已清除");if(state.anchor)$("#anchorDate").value=state.anchor;
+loadWatchlist();initPanelResize();load().then(()=>pipeline.restore());

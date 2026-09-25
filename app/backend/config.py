@@ -54,6 +54,9 @@ class Settings(BaseModel):
     alert_universe: bool = True
     alert_near_pct: float = 0
     flow_max_rounds: int = 20
+    # Absolute origin used for links inside the mailed report; a relative href would
+    # resolve against the mail client. Empty means the report ships without links.
+    public_base_url: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
